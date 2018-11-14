@@ -110,8 +110,59 @@ function  Byte_in_Word  fn_addr_to_byte_in_wordxl (Addr a);
    return a [addr_hi_byte_in_wordxl : addr_lo_byte_in_wordxl ];
 endfunction
 
+
+// =-=-=-=-=-=-=================================================================
+// CHERI - capability types. Currently only 64-bit CHERI-RISC-V is specified.
+
+
+//`ifdef CHERI
+typedef 128 CLEN; // CHERI-RISC-V only defines the 128-bit capability format.
+typedef Bit #(CLEN) Capability;
+
+typedef struct {
+    Bool            tag;
+    Bit #(CLEN)   capability;
+    } Tagged_Cap
+deriving (Bits, Eq);
+
+Opcode op_CAP       = 7'b10_110_11;  // = 0x5b
+Opcode op_CAPLOAD   = 7'b00_010_11;  // = 0x0b
+
+
+typedef struct {
+   Opcode    opcode;
+
+   RegName   rd;
+   RegName   rs1;
+   RegName   rs2;
+   RegName   rs3;
+   CSR_Addr  csr;
+   
 // ----------------
 // can have one or two fpu sizes (should they be merged sooner than later ?)
+
+`ifdef ISA_F
+   Bit #(2)  funct2;
+`endif
+   Bit #(3)  funct3;
+   Bit #(5)  funct5;
+   Bit #(7)  funct7;
+   Bit #(10) funct10;
+
+   Bit #(12) imm12_I;
+   Bit #(12) imm12_S;
+   Bit #(13) imm13_SB;
+   Bit #(20) imm20_U;
+   Bit #(21) imm21_UJ;
+
+   Bit #(4)  pred;
+   Bit #(4)  succ;
+
+   Bit #(2)  aqrl;
+   } Decoded_Instr
+deriving (FShow, Bits);
+
+//`endif
 
 
 // Cannot define ISA_D unless ISA_F is also defined
