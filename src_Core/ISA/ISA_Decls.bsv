@@ -114,19 +114,56 @@ endfunction
 // =-=-=-=-=-=-=================================================================
 // CHERI - capability types. Currently only 64-bit CHERI-RISC-V is specified.
 
+`ifdef CHERI
 
-//`ifdef CHERI
-typedef 128 CLEN; // CHERI-RISC-V only defines the 128-bit capability format.
+typedef 128 CLEN;
 typedef Bit #(CLEN) Capability;
-
+typedef Bit #(129) Tagged_Capability;
+// The Bool type doesn't guarantee its size being 1 bit, so leave the struct for now.
+/*
 typedef struct {
     Bool            tag;
     Bit #(CLEN)   capability;
     } Tagged_Cap
 deriving (Bits, Eq);
+*/
 
 Opcode op_CAP       = 7'b10_110_11;  // = 0x5b
 Opcode op_CAPLOAD   = 7'b00_010_11;  // = 0x0b
+
+
+// Some of these are repeated (notably 0x7f for inspection/cleartag/move).
+Bit #(7) f7_CAPINSPECT  = 7'b11_111_11; // = 0x7f
+Bit #(7) f7_CSEAL       = 7'b00_010_11; // = 0x0b
+Bit #(7) f7_CUNSEAL     = 7'b00_011_00; // = 0x0c
+Bit #(7) f7_ANDPERM     = 7'b00_011_01; // = 0x0d
+Bit #(7) f7_SETOFFSET   = 7'b00_011_11; // = 0x0f
+Bit #(7) f7_INCOFFSET   = 7'b00_100_01; // = 0x11
+Bit #(7) f7_CSETBOUNDS  = 7'b00_010_00; // = 0x08
+Bit #(7) f7_CSBOUNDSEX  = 7'b00_010_01; // = 0x09
+Bit #(7) f7_CLEARTAG    = 7'b11_111_11; // = 0x7f
+Bit #(7) f7_CBUILDCAP   = 7'b00_111_01; // = 0x1d
+Bit #(7) f7_CCOPYTYPE   = 7'b00_111_10; // = 0x1e
+Bit #(7) f7_CCSEAL      = 7'b00_111_11; // = 0x1f
+Bit #(7) f7_CTOPTR      = 7'b00_100_10; // = 0x12
+Bit #(7) f7_CFROMPTR    = 7'b00_100_11; // = 0x13
+Bit #(7) f7_CMOVE       = 7'b11_111_11; // = 0x7f
+Bit #(7) f7_CSPECIALRW  = 7'b00_000_01; // = 0x01
+Bit #(7) f7_CJALR       = 7'b11_111_11; // = 0x7f
+Bit #(7) f7_CCALLRET    = 7'b11_111_10; // = 0x7e
+Bit #(7) f7_MEMORYOP    = 7'b00_000_00; // = 0x00
+
+// The majority of capability F3s are 0; these are the exceptions.
+Bit #(3) f3_CINCOFFIMM  = 3'b001; // = 0x1f
+Bit #(3) f3_CSBOUNDIMM  = 3'b010; // = 0x1f
+
+Bit #(5) f5_CRETURN     = 5'b11111; // = 0x1f
+Bit #(5) f5_CCHECKPERM  = 5'b01000; // = 0x08
+Bit #(5) f5_CCHECKTYPE  = 5'b01001; // = 0x09
+Bit #(5) f5_FASTCLEAR   = 5'b01101; // = 0x0d
+Bit #(5) f5_FASTCLEARFP = 5'b10000; // = 0x10
+
+`endif
 
 
 typedef struct {
