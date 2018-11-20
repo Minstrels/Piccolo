@@ -46,6 +46,20 @@ interface GPR_RegFile_IFC;
    // Reset
    interface Server #(Token, Token) server_reset;
 
+
+`ifdef CHERI
+   // Capability register read
+   (* always_ready *)
+   method Tagged_Capability read_rs1 (RegName rs1);
+   (* always_ready *)
+   method Tagged_Capability read_rs1_port2 (RegName rs1);   
+   (* always_ready *)
+   method Tagged_Capability read_rs2 (RegName rs2);
+   // Capability register write
+   // We will sort out the tag elsewhere, so the value passed here is safe.
+   (* always_ready *)
+   method Action write_rd (RegName rd, Tagged_Capability rd_val);
+`else
    // GPR read
    (* always_ready *)
    method Word read_rs1 (RegName rs1);
@@ -53,10 +67,10 @@ interface GPR_RegFile_IFC;
    method Word read_rs1_port2 (RegName rs1);    // For debugger access only
    (* always_ready *)
    method Word read_rs2 (RegName rs2);
-
    // GPR write
    (* always_ready *)
    method Action write_rd (RegName rd, Word rd_val);
+`endif
 
 endinterface
 
@@ -78,12 +92,15 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
 
    // General Purpose Registers
    // TODO: can we use Reg [0] for some other purpose?
+`ifdef CHERI
+   RegFile #(RegName, Tagged_Capability) regfile <- mkRegFileFull;
+`else
    RegFile #(RegName, Word) regfile <- mkRegFileFull;
-
+`endif
    // ----------------------------------------------------------------
    // Reset.
    // This loop initializes all GPRs to 0.
-   // The spec does not require this, but it's useful for debugging
+   // The RISC-V spec does not require this, but it's useful for debugging
    // and tandem verification
 
 `ifdef INCLUDE_TANDEM_VERIF
@@ -101,17 +118,24 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
 `endif
    endrule
 
-   rule rl_reset_loop (rg_state == RF_RESETTING);
+    rule rl_reset_loop (rg_state == RF_RESETTING);
 `ifdef INCLUDE_TANDEM_VERIF
-      regfile.upd (rg_j, 0);
-      rg_j <= rg_j + 1;
-      if (rg_j == 31)
-	 rg_state <= RF_RUNNING;
+        regfile.upd (rg_j, 0);
+        rg_j <= rg_j + 1;
+        if (rg_j == 31)
+            rg_state <= RF_RUNNING;
 `elsif RVFI
-      regfile.upd (rg_j, 0);
-      rg_j <= rg_j + 1;
-      if (rg_j == 31)
-	 rg_state <= RF_RUNNING;
+    `ifdef CHERI
+        regfile.upd (rg_j, tc_default);
+        rg_j <= rg_j + 1;
+        if (rg_j == 31)
+            rg_state <= RF_RUNNING;
+    `else
+        regfile.upd (rg_j, 0);
+        rg_j <= rg_j + 1;
+        if (rg_j == 31)
+            rg_state <= RF_RUNNING;
+    `endif
 `else
       rg_state <= RF_RUNNING;
 `endif
@@ -140,11 +164,23 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
    endinterface
 
    // GPR read
+`ifdef CHERI
+   method Tagged_Capability read_rs1 (RegName rs1);
+      return ((rs1 == 0) ? 0 : regfile.sub (rs1));
+   endmethod
+
+   method Tagged_Capability read_rs1_port2 (RegName rs1);
+      return ((rs1 == 0) ? 0 : regfile.sub (rs1));
+   endmethod
+
+   method Tagged_Capability read_rs2 (RegName rs2);
+      return ((rs2 == 0) ? 0 : regfile.sub (rs2));
+   endmethod
+`else
    method Word read_rs1 (RegName rs1);
       return ((rs1 == 0) ? 0 : regfile.sub (rs1));
    endmethod
 
-   // GPR read
    method Word read_rs1_port2 (RegName rs1);        // For debugger access only
       return ((rs1 == 0) ? 0 : regfile.sub (rs1));
    endmethod
@@ -152,12 +188,19 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
    method Word read_rs2 (RegName rs2);
       return ((rs2 == 0) ? 0 : regfile.sub (rs2));
    endmethod
-
+`endif
+   
    // GPR write
+`ifdef CHERI
+   method Action write_rd (RegName rd, Tagged_Capability rd_val);
+      if (rd != 0) regfile.upd (rd, rd_val);
+   endmethod
+`else
    method Action write_rd (RegName rd, Word rd_val);
       if (rd != 0) regfile.upd (rd, rd_val);
    endmethod
-
+`endif
+   
 endmodule
 
 // ================================================================

@@ -111,22 +111,27 @@ function  Byte_in_Word  fn_addr_to_byte_in_wordxl (Addr a);
 endfunction
 
 
-// =-=-=-=-=-=-=================================================================
-// CHERI - capability types. Currently only 64-bit CHERI-RISC-V is specified.
+// =-=-=-=-=-=-======================================================================
+// CHERI - capability types. Currently only 64-bit CHERI-RISC-V is fully specified.
 
 `ifdef CHERI
 
 typedef 128 CLEN;
 typedef Bit #(CLEN) Capability;
-typedef Bit #(129) Tagged_Capability;
-// The Bool type doesn't guarantee its size being 1 bit, so leave the struct for now.
-/*
+
 typedef struct {
-    Bool            tag;
-    Bit #(CLEN)   capability;
-    } Tagged_Cap
+    Bit #(1)      tag;
+    Capability   capability;
+    } Tagged_Capability
 deriving (Bits, Eq);
-*/
+
+// Default zeroed capability register value (not DDC!)
+Tagged_Capability tc_default = 
+        Tagged_Capability {
+           tag:         0,
+           capability:  0
+        };
+
 
 Opcode op_CAP       = 7'b10_110_11;  // = 0x5b
 Opcode op_CAPLOAD   = 7'b00_010_11;  // = 0x0b
@@ -162,6 +167,21 @@ Bit #(5) f5_CCHECKPERM  = 5'b01000; // = 0x08
 Bit #(5) f5_CCHECKTYPE  = 5'b01001; // = 0x09
 Bit #(5) f5_FASTCLEAR   = 5'b01101; // = 0x0d
 Bit #(5) f5_FASTCLEARFP = 5'b10000; // = 0x10
+
+Bit #(5) f5_CGETPERM    = 5'b00000; // = 0x00
+Bit #(5) f5_CGETTYPE    = 5'b00001; // = 0x01
+Bit #(5) f5_CGETBASE    = 5'b00010; // = 0x02
+Bit #(5) f5_CGETLEN     = 5'b00011; // = 0x03
+Bit #(5) f5_CGETTAG     = 5'b00100; // = 0x04
+Bit #(5) f5_CGETSEALED  = 5'b00101; // = 0x05
+Bit #(5) f5_CGETOFFSET  = 5'b00110; // = 0x06
+Bit #(5) f5_CGETADDR    = 5'b01111; // = 0x0f
+
+// TODO:    Confirm encoding of memory op
+//          { SIGN   LENGTH[1:0]   LOAD/STORE }
+//          Exception: Quad stores replace unsigned byte stores; DDC quad
+//          load replaces halfword unsigned store.
+
 
 `endif
 
