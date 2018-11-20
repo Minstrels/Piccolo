@@ -56,9 +56,11 @@ interface GPR_RegFile_IFC;
    (* always_ready *)
    method Tagged_Capability read_rs2 (RegName rs2);
    // Capability register write
-   // We will sort out the tag elsewhere, so the value passed here is safe.
    (* always_ready *)
    method Action write_rd (RegName rd, Tagged_Capability rd_val);
+   // Integer register write. Clears tag and upper XLEN bits
+   (* always_ready *)
+   method Action write_rd_int (RegName rd, WordXL rd_val);
 `else
    // GPR read
    (* always_ready *)
@@ -194,6 +196,10 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
 `ifdef CHERI
    method Action write_rd (RegName rd, Tagged_Capability rd_val);
       if (rd != 0) regfile.upd (rd, rd_val);
+   endmethod
+   
+   method Action write_rd_int (RegName rd, WordXL rd_val);
+      if (rd != 0) regfile.upd(rd, Tagged_Capability { tag: 0, capability: {0, rd_val} );
    endmethod
 `else
    method Action write_rd (RegName rd, Word rd_val);
