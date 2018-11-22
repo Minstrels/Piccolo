@@ -51,6 +51,17 @@ interface CSR_RegFile_IFC;
    (* always_ready *)
    method ActionValue #(Maybe #(Word)) mav_read_csr (CSR_Addr csr_addr);
 
+`ifdef CHERI
+   // Not all CSRs are extended, so we need separate methods for the two options.
+   (* always_ready *)
+   method Action write_csr_cap(CapCSR_Addr cap_addr, Tagged_Capability value);
+   
+   // CSR read (w.o. side effect)
+   (* always_ready *)
+   method Maybe #(Tagged_Capability) read_csr (CapCSR_Addr csr_addr);
+   
+`endif
+
    // CSR write
    (* always_ready *)
    method Action write_csr (CSR_Addr csr_addr, Word word);
@@ -219,6 +230,42 @@ deriving (Eq, Bits, FShow);
 (* synthesize *)
 module mkCSR_RegFile (CSR_RegFile_IFC);
 
+`ifdef CHERI
+
+   // TODO: Confirm initial values.
+   // TODO: Do these need to be tagged?
+   
+   // TODO: We might need/be able to reconfigure this. 
+   //       Piccolo's standard PC is implicit in function calls.
+   Reg #(Capability) PCC <- mkRegU;
+
+   Reg #(Tagged_Capability) PCC         <- mkRegU;
+   Reg #(Tagged_Capability) DDC         <- mkRegU;
+
+   Reg #(Tagged_Capability) UTCC        <- mkRegU;
+   Reg #(Tagged_Capability) UScratchC   <- mkRegU;
+   Reg #(Tagged_Capability) UEPCC       <- mkRegU;
+
+   Reg #(Tagged_Capability) STCC        <- mkRegU;
+   Reg #(Tagged_Capability) SScratchC   <- mkRegU;
+   Reg #(Tagged_Capability) SEPCC       <- mkRegU;
+
+   Reg #(Tagged_Capability) MTCC        <- mkRegU;
+   Reg #(Tagged_Capability) MSratchC    <- mkRegU;
+   Reg #(Tagged_Capability) MEPCC       <- mkRegU;
+
+   Reg #(Tagged_Capability) CCSR        <- mkRegU;
+
+`else
+   
+   // Exception PCCs etc.
+   // TODO: Any others needing replacement?
+   Reg #(Word)       rg_sepc      <- mkRegU;
+   Reg #(Word)       rg_mepc     <- mkRegU;
+   
+`endif
+
+
    Reg #(Bit #(4)) cfg_verbosity <- mkConfigReg (0);
    Reg #(RF_State) rg_state      <- mkReg (RF_RESET_START);
 
@@ -249,8 +296,8 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    // scounteren hardwired to 0 for now
 
    Reg #(Word)       rg_sscratch  <- mkRegU;
-   Reg #(Word)       rg_sepc      <- mkRegU;
    Reg #(MCause)     rg_scause    <- mkRegU;
+   // TODO: Is this the STVEC as referenced in the CHERI-RISC-V spec?
    Reg #(Word)       rg_stval     <- mkRegU;
 
    Reg #(WordXL)     rg_satp      <- mkRegU;
@@ -275,7 +322,6 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    Reg #(MCounteren) rg_mcounteren <- mkRegU;
 
    Reg #(Word)       rg_mscratch <- mkRegU;
-   Reg #(Word)       rg_mepc     <- mkRegU;
    Reg #(MCause)     rg_mcause   <- mkRegU;
    Reg #(Word)       rg_mtval    <- mkRegU;
    Reg #(MIP)        rg_mip      <- mkRegU;

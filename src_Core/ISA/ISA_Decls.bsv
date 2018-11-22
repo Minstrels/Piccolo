@@ -118,6 +118,7 @@ endfunction
 
 typedef 128 CLEN;
 typedef Bit #(CLEN) Capability;
+typedef Bit #(5) CapCSR_Addr;
 
 typedef struct {
     Bit #(1)      tag;
@@ -181,7 +182,6 @@ Bit #(5) f5_CGETADDR    = 5'b01111; // = 0x0f
 //          { SIGN   LENGTH[1:0]   LOAD/STORE }
 //          Exception: Quad stores replace unsigned byte stores; DDC quad
 //          load replaces halfword unsigned store.
-
 
 `endif
 
@@ -821,6 +821,35 @@ endfunction
 
 // ----------------
 // User-level CSR addresses
+
+`ifdef CHERI
+
+    // TODO: Confirm encoding of new capabilities
+    // TODO: Scratch registers aren't given in CHERI spec as extending the base CSRs, so are they separate?
+    
+    CSR_Addr csr_ddc          = 12'h000;    // Default Data Capability
+    CSR_Addr csr_uepcc        = 12'h041;    // User exception capability
+    CSR_Addr csr_udc          = 12'h000;    // User data capability
+    CSR_Addr csr_uvc          = 12'h005;    // User vector capability  
+    CSR_Addr csr_usc          = 12'h040;    // User scratch capability
+
+    // Supervisor mode and above:
+    CSR_Addr csr_sepcc        = 12'h141;
+    CSR_Addr csr_svc          = 12'h105;
+    CSR_Addr csr_ssc          = 12'h140;
+
+    // Hypervisor mode and above
+    //CSR_Addr csr_hepcc        = 12'h241;
+    //CSR_Addr csr_hdc          = 12'h___;
+    //CSR_Addr csr_hvc          = 12'h205;
+    //CSR_Addr csr_hsc          = 12'h240;
+
+    // Machine mode and above
+    CSR_Addr csr_mepcc        = 12'h341;
+    CSR_Addr csr_mvc          = 12'h305;
+    CSR_Addr csr_msc          = 12'h340;
+    
+`endif
 
 CSR_Addr   csr_ustatus        = 12'h000;    // User status
 CSR_Addr   csr_uie            = 12'h004;    // User interrupt-enable
