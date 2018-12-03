@@ -173,7 +173,7 @@ endfunction
 function Bit #(15) cap_uperms (Capability x); return x [127:113];       endfunction
 function Bit #(15) cap_exp    (Capability x); return x [110:105];       endfunction
 function Bool      cap_sealed (Capability x); return unpack(x[104]);    endfunction
-function Bit #(64) cap_addr   (Capability x); return x [53:0];          endfunction
+function Bit #(64) cap_addr   (Capability x); return x [63:0];          endfunction
 
 function Bit #(15) cap_bottom    (Capability x); 
     return cap_sealed(x) ? {x[103:96], 12'b0} : x[103:84];
@@ -185,6 +185,20 @@ endfunction
 
 function Bit #(24) cap_otype  (Capability x); 
     return cap_sealed(x) ? {x[95:84], x[75:64]} : 0;
+endfunction
+
+function Tagged_Capability increment_pcc(Tagged_Capability pcc);
+    return change_tagged_addr(pcc, pcc.capability[63:0] + 4);
+endfunction
+
+// Generates targets for branches/jumps given an old capability (i.e. PCC) and a new address
+function Tagged_Capability change_tagged_addr (Tagged_Capability old_cap, Addr new_addr);
+    Capability new_value = old_cap.capability;
+    new_value[63:0] = new_addr;
+    return Tagged_Capability {
+        tag: old_cap.tag,
+        capability: new_value
+    };
 endfunction
 
 

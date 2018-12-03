@@ -12,7 +12,9 @@
 //     DARPA SSITH research programme.
 //-
 
-package EX_ALU_functions;
+package EX_ALU_CHERI_functions;
+// This file is largely duplicated and/or derived from EX_ALU_functions.bsv, but with adaptation for the
+// use of capability-mode behaviour and tagged capability values.
 
 // ================================================================
 // These are the "ALU" functions in the EX stage of the "Piccolo" CPU.
@@ -48,23 +50,18 @@ import CPU_Globals :: *;
 // ================================================================
 // ALU inputs
 
-`ifdef CHERI
-
-import EX_ALU_CHERI_functions :: *;
-
-`else
-
 typedef struct {
-   Priv_Mode      cur_priv;
-   Addr           pc;
-   Instr          instr;
-   Decoded_Instr  decoded_instr;
-   WordXL         rs1_val;
-   WordXL         rs2_val;
-   Bool           csr_valid;
-   WordXL         csr_val;
-   WordXL         mstatus;
-   MISA           misa;
+   Priv_Mode            cur_priv;
+   Tagged_Capability    pcc;
+   Instr                instr;
+   Decoded_Instr        decoded_instr;
+   Bool                 cap_mode;
+   Tagged_Capability    rs1_val;
+   Tagged_Capability    rs2_val;
+   Bool                 csr_valid;
+   Tagged_Capability    csr_val;
+   WordXL               mstatus;
+   MISA                 misa;
    } ALU_Inputs
 deriving (Bits, FShow);
 
@@ -72,25 +69,26 @@ deriving (Bits, FShow);
 // ALU outputs
 
 typedef struct {
-   Control    control;
-   Exc_Code   exc_code;        // Relevant if control == CONTROL_TRAP
+   Control              control;
+   Exc_Code             exc_code;        // Relevant if control == CONTROL_TRAP
 
-   Op_Stage2  op_stage2;
-   RegName    rd;
-   Bool       csr_valid;
-   Addr       addr;     // Branch, jump: newPC
-		                // Mem ops and AMOs: mem addr
-                        // CSRRx: csr addr
+   Op_Stage2            op_stage2;
+   RegName              rd;
+   Bool                 csr_valid;
+   Bool                 cap_mode;
+   Tagged_Capability    addr;       // Branch, jump: newPC
+                                    // Mem ops and AMOs: mem addr
+                                    // CSRRx: csr addr
 
-   WordXL     val1;     // OP_Stage2_ALU: result for Rd (ALU ops: result, JAL/JALR: return PC,
-                        //                           CSSRx: old value of CSR)
-                        // OP_Stage2_M, OP_Stage2_FD: arg1
-                        // OP_Stage2_AMO: funct7
+   Tagged_Capability    val1;   // OP_Stage2_ALU: result for Rd (ALU ops: result, JAL/JALR: return PC,
+                                //                           CSSRx: old value of CSR)
+                                // OP_Stage2_M, OP_Stage2_FD: arg1
+                                // OP_Stage2_AMO: funct7
 
-   WordXL     val2;     // Branch: branch target (for Tandem Verification)
-		                // OP_Stage2_ST: store-val
-                        // OP_Stage2_M, OP_Stage2_FD: arg2
-		                // CSSRx: new csr value
+   Tagged_Capability    val2;   // Branch: branch target (for Tandem Verification)
+                                // OP_Stage2_ST: store-val
+                                // OP_Stage2_M, OP_Stage2_FD: arg2
+                                // CSSRx: new csr value
    } ALU_Outputs
 deriving (Bits, FShow);
 
@@ -172,53 +170,181 @@ function WordXL fn_shrl (WordXL x, Bit #(TLog #(XLEN)) shamt);
 endfunction
 
 // ----------------------------------------------------------------
-// BRANCH
+// Top-level ALU function
 
-function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
-   let rs1_val = inputs.rs1_val;
-   let rs2_val = inputs.rs2_val;
-
-   // Signed versions of rs1_val and rs2_val
-   IntXL s_rs1_val = unpack (inputs.rs1_val);
-   IntXL s_rs2_val = unpack (inputs.rs2_val);
-
-   IntXL offset        = extend (unpack (inputs.decoded_instr.imm13_SB));
-   Addr  branch_target = pack (unpack (inputs.pc) + offset);
-   Bool  branch_taken  = False;
-   Bool  trap          = False;
-
-   let funct3 = inputs.decoded_instr.funct3;
-   if      (funct3 == f3_BEQ)  branch_taken = (rs1_val  == rs2_val);
-   else if (funct3 == f3_BNE)  branch_taken = (rs1_val  != rs2_val);
-   else if (funct3 == f3_BLT)  branch_taken = (s_rs1_val <  s_rs2_val);
-   else if (funct3 == f3_BGE)  branch_taken = (s_rs1_val >= s_rs2_val);
-   else if (funct3 == f3_BLTU) branch_taken = (rs1_val  <  rs2_val);
-   else if (funct3 == f3_BGEU) branch_taken = (rs1_val  >= rs2_val);
-    // XXX: This should throw an invalid instruction exception, not a misalignment.
-   else                        trap = True;
-
-   trap = (trap ||
-	   (branch_taken && (branch_target [1] == 1'b1)));
-
+function ALU_Outputs fv_ALU (ALU_Inputs inputs);
    let alu_outputs = alu_outputs_base;
-   alu_outputs.control   = (trap ? CONTROL_TRAP : (branch_taken ? CONTROL_BRANCH : CONTROL_STRAIGHT));
-   alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
-   alu_outputs.op_stage2 = OP_Stage2_ALU;
-   alu_outputs.rd        = 0;
-   alu_outputs.addr      = (branch_taken ? branch_target : (inputs.pc + 4));
-   // Gives a defined value when in verification mode.
-   `ifdef RVFI
-   alu_outputs.val1      = 0;
-   `endif
-   alu_outputs.val2      = branch_target;    // For tandem verifier only
+
+   if (inputs.decoded_instr.opcode == op_BRANCH)
+      alu_outputs = fv_BRANCH_CHERI (inputs);           // IN-PROGRESS
+
+   else if (inputs.decoded_instr.opcode == op_JAL)
+      alu_outputs = fv_JAL_CHERI (inputs);
+
+   else if (inputs.decoded_instr.opcode == op_JALR)
+      alu_outputs = fv_JALR_CHERI (inputs);
+
+`ifdef ISA_M
+   // TODO: CHERI ops for M extension?
+
+   // OP 'M' ops MUL/ MULH/ MULHSU/ MULHU/ DIV/ DIVU/ REM/ REMU
+   else if (   (inputs.decoded_instr.opcode == op_OP)
+	    && f7_is_OP_MUL_DIV_REM (inputs.decoded_instr.funct7))
+      begin
+	 // Will be executed in MBox in next stage
+	 alu_outputs.op_stage2 = OP_Stage2_M;
+	 alu_outputs.rd        = inputs.decoded_instr.rd;
+	 alu_outputs.val1      = inputs.rs1_val;
+	 alu_outputs.val2      = inputs.rs2_val;
+      end
+
+`ifdef RV64
+   // OP 'M' ops MULW/ DIVW/ DIVUW/ REMW/ REMUW
+   else if (   (inputs.decoded_instr.opcode == op_OP_32)
+	    && f7_is_OP_MUL_DIV_REM (inputs.decoded_instr.funct7))
+      begin
+	 // Will be executed in MBox in next stage
+	 alu_outputs.op_stage2 = OP_Stage2_M;
+	 alu_outputs.rd        = inputs.decoded_instr.rd;
+	 alu_outputs.val1      = inputs.rs1_val;
+	 alu_outputs.val2      = inputs.rs2_val;
+      end
+`endif
+`endif
+
+   // OP_IMM and OP (shifts)
+   else if (   (   (inputs.decoded_instr.opcode == op_OP_IMM)
+		|| (inputs.decoded_instr.opcode == op_OP))
+	    && (   (inputs.decoded_instr.funct3 == f3_SLLI)
+		|| (inputs.decoded_instr.funct3 == f3_SRLI)
+		|| (inputs.decoded_instr.funct3 == f3_SRAI)))
+      alu_outputs = fv_OP_and_OP_IMM_shifts_CHERI (inputs);
+
+   // TODO: set up floating point ops for next stage, similar to 'M' setup
+
+   // Remaining OP_IMM and OP (excluding shifts and 'M' ops MUL/DIV/REM)
+   else if (   (inputs.decoded_instr.opcode == op_OP_IMM)
+	    || (inputs.decoded_instr.opcode == op_OP))
+      alu_outputs = fv_OP_and_OP_IMM_CHERI (inputs);
+
+`ifdef RV64
+   else if (inputs.decoded_instr.opcode == op_OP_IMM_32)
+      alu_outputs = fv_OP_IMM_32_CHERI (inputs);
+
+   // Remaining op_OP_32 (excluding 'M' ops)
+   else if (inputs.decoded_instr.opcode == op_OP_32)
+      alu_outputs = fv_OP_32_CHERI (inputs);
+`endif
+
+   else if (inputs.decoded_instr.opcode == op_LUI)
+      alu_outputs = fv_LUI_CHERI (inputs);
+
+   else if (inputs.decoded_instr.opcode == op_AUIPC)
+      alu_outputs = fv_AUIPC_CHERI (inputs);
+
+   else if (inputs.decoded_instr.opcode == op_LOAD)
+      alu_outputs = fv_LD_CHERI (inputs);
+
+   else if (inputs.decoded_instr.opcode == op_STORE)
+      alu_outputs = fv_ST_CHERI (inputs);
+
+   else if (inputs.decoded_instr.opcode == op_MISC_MEM)
+      alu_outputs = fv_MISC_MEM_CHERI (inputs);
+
+   else if (inputs.decoded_instr.opcode == op_SYSTEM)
+      alu_outputs = fv_SYSTEM_CHERI (inputs);
+
+`ifdef ISA_A
+   else if (inputs.decoded_instr.opcode == op_AMO)
+      alu_outputs = fv_AMO_CHERI (inputs);
+`endif
+
+`ifdef ISA_FD
+   // All these just set up for the next stage (Mem box, or FBox)
+   // TODO: op_LOAD_FP, op_STORE_FP
+   // TODO: op_FP: all the floating-point ops
+   // TODO: op_FM_ADD_SUB
+   // TODO: op_FNM_ADD_SUB
+`endif
+
+   else begin
+      alu_outputs.control = CONTROL_TRAP;
+   end
 
    return alu_outputs;
 endfunction
 
 // ----------------------------------------------------------------
+// BRANCH
+
+function ALU_Outputs fv_BRANCH_CHERI (ALU_Inputs inputs);
+    let alu_outputs = alu_outputs_base;
+    alu_outputs.rd        = 0;
+    alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
+    alu_outputs.op_stage2 = OP_Stage2_ALU;
+    Bool  branch_taken  = False;
+    Bool  trap          = False;
+    Addr  branch_target = pack (unpack(cap_addr(inputs.pcc.capability)) + offset);
+    
+    // TODO: Does capability-mode comparison compare the entire value, or just the 
+    //       address/value part as usual? If not, how does ordering work?
+    let rs1_val = cap_addr(inputs.rs1_val.capability);
+    let rs2_val = cap_addr(inputs.rs2_val.capability);
+    IntXL s_rs1_val = unpack (inputs.rs1_val);
+    IntXL s_rs2_val = unpack (inputs.rs2_val);
+    IntXL offset        = extend (unpack (inputs.decoded_instr.imm13_SB));
+    let funct3 = inputs.decoded_instr.funct3;
+    if inputs.cap_mode begin
+        let rs1_tag = inputs.rs1_val.tag;
+        let rs2_tag = inputs.rs2_val.tag;
+        if      (funct3 == f3_BEQ)  branch_taken = ((rs1_tag == rs2_tag)  && (rs1_val == rs2_val));
+        else if (funct3 == f3_BNE)  branch_taken = ((rs1_tag != rs2_tag)  || (rs1_val != rs2_val));
+        else if (funct3 == f3_BLT)  branch_taken = 
+            // Tag ordering           ... or both same tag and values ordered
+            ((!rs1_tag && rs2_tag) || (rs1_tag == rs2_tag && s_rs1_val < s_rs2_val));
+        else if (funct3 == f3_BGE)  branch_taken = 
+            // Greater-or-equal is just the negation of less-than. Checking the other cases
+            !((rs1_tag && !rs2_tag) || (rs1_tag == rs2_tag && s_rs1_val < s_rs2_val));
+        else if (funct3 == f3_BLTU)  branch_taken = 
+            ((!rs1_tag && rs2_tag) || (rs1_tag == rs2_tag && rs1_val < rs2_val));
+        else if (funct3 == f3_BGEU)  branch_taken = 
+            !((rs1_tag && !rs2_tag) || (rs1_tag == rs2_tag && rs1_val < rs2_val));
+        else begin
+            // TODO: Is this the correct exception code? 
+            trap = True;
+            alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
+        end
+    end else begin
+        // Signed versions of rs1_val and rs2_val
+        if      (funct3 == f3_BEQ)  branch_taken = (rs1_val == rs2_val);
+        else if (funct3 == f3_BNE)  branch_taken = (rs1_val != rs2_val);
+        else if (funct3 == f3_BLT)  branch_taken = (s_rs1_val < s_rs2_val);
+        else if (funct3 == f3_BGE)  branch_taken = (s_rs1_val >= s_rs2_val);
+        else if (funct3 == f3_BLTU) branch_taken = (rs1_val < rs2_val);
+        else if (funct3 == f3_BGEU) branch_taken = (rs1_val >= rs2_val);
+        else begin
+            trap = True;
+            alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
+        end
+    end
+    // TODO: Should we check the LSB here? Need [1:0] == 0 to ensure 4-byte alignment.
+    // TODO: Confirm - we simply change the address in PCC for the branch target?
+    trap = (trap || (branch_taken && (branch_target [1] == 1'b1)));
+    Addr new_pc = branch_taken ? branch_target : (cap_addr(inputs.pcc.capability) + 4);
+    alu_outputs.addr = change_tagged_addr(inputs.pcc, new_pc);
+    alu_outputs.control   = (trap ? CONTROL_TRAP : (branch_taken ? CONTROL_BRANCH : CONTROL_STRAIGHT));
+    // Gives a defined value when in verification mode.
+    alu_outputs.val2      = change_tagged_addr(inputs.pcc, branch_target);    // For tandem verifier only
+    `ifdef RVFI
+    alu_outputs.val1      = 0;
+    `endif
+    return alu_outputs;
+endfunction
+
+// ----------------------------------------------------------------
 // JAL
 
-function ALU_Outputs fv_JAL (ALU_Inputs inputs);
+function ALU_Outputs fv_JAL_CHERI (ALU_Inputs inputs);
    IntXL offset  = extend (unpack (inputs.decoded_instr.imm21_UJ));
    Addr  next_pc = pack (unpack (inputs.pc) + offset);
    Addr  ret_pc  = inputs.pc + 4;
@@ -242,7 +368,7 @@ endfunction
 // ----------------------------------------------------------------
 // JALR
 
-function ALU_Outputs fv_JALR (ALU_Inputs inputs);
+function ALU_Outputs fv_JALR_CHERI (ALU_Inputs inputs);
    let rs1_val = inputs.rs1_val;
    let rs2_val = inputs.rs2_val;
 
@@ -832,111 +958,8 @@ function ALU_Outputs fv_AMO (ALU_Inputs inputs);
 endfunction
 `endif
 
-// ----------------------------------------------------------------
-// Top-level ALU function
 
-function ALU_Outputs fv_ALU (ALU_Inputs inputs);
-   let alu_outputs = alu_outputs_base;
-
-   if (inputs.decoded_instr.opcode == op_BRANCH)
-      alu_outputs = fv_BRANCH (inputs);
-
-   else if (inputs.decoded_instr.opcode == op_JAL)
-      alu_outputs = fv_JAL (inputs);
-
-   else if (inputs.decoded_instr.opcode == op_JALR)
-      alu_outputs = fv_JALR (inputs);
-
-`ifdef ISA_M
-   // OP 'M' ops MUL/ MULH/ MULHSU/ MULHU/ DIV/ DIVU/ REM/ REMU
-   else if (   (inputs.decoded_instr.opcode == op_OP)
-	    && f7_is_OP_MUL_DIV_REM (inputs.decoded_instr.funct7))
-      begin
-	 // Will be executed in MBox in next stage
-	 alu_outputs.op_stage2 = OP_Stage2_M;
-	 alu_outputs.rd        = inputs.decoded_instr.rd;
-	 alu_outputs.val1      = inputs.rs1_val;
-	 alu_outputs.val2      = inputs.rs2_val;
-      end
-
-`ifdef RV64
-   // OP 'M' ops MULW/ DIVW/ DIVUW/ REMW/ REMUW
-   else if (   (inputs.decoded_instr.opcode == op_OP_32)
-	    && f7_is_OP_MUL_DIV_REM (inputs.decoded_instr.funct7))
-      begin
-	 // Will be executed in MBox in next stage
-	 alu_outputs.op_stage2 = OP_Stage2_M;
-	 alu_outputs.rd        = inputs.decoded_instr.rd;
-	 alu_outputs.val1      = inputs.rs1_val;
-	 alu_outputs.val2      = inputs.rs2_val;
-      end
-`endif
-`endif
-
-   // OP_IMM and OP (shifts)
-   else if (   (   (inputs.decoded_instr.opcode == op_OP_IMM)
-		|| (inputs.decoded_instr.opcode == op_OP))
-	    && (   (inputs.decoded_instr.funct3 == f3_SLLI)
-		|| (inputs.decoded_instr.funct3 == f3_SRLI)
-		|| (inputs.decoded_instr.funct3 == f3_SRAI)))
-      alu_outputs = fv_OP_and_OP_IMM_shifts (inputs);
-
-   // TODO: set up floating point ops for next stage, similar to 'M' setup
-
-   // Remaining OP_IMM and OP (excluding shifts and 'M' ops MUL/DIV/REM)
-   else if (   (inputs.decoded_instr.opcode == op_OP_IMM)
-	    || (inputs.decoded_instr.opcode == op_OP))
-      alu_outputs = fv_OP_and_OP_IMM (inputs);
-
-`ifdef RV64
-   else if (inputs.decoded_instr.opcode == op_OP_IMM_32)
-      alu_outputs = fv_OP_IMM_32 (inputs);
-
-   // Remaining op_OP_32 (excluding 'M' ops)
-   else if (inputs.decoded_instr.opcode == op_OP_32)
-      alu_outputs = fv_OP_32 (inputs);
-`endif
-
-   else if (inputs.decoded_instr.opcode == op_LUI)
-      alu_outputs = fv_LUI (inputs);
-
-   else if (inputs.decoded_instr.opcode == op_AUIPC)
-      alu_outputs = fv_AUIPC (inputs);
-
-   else if (inputs.decoded_instr.opcode == op_LOAD)
-      alu_outputs = fv_LD (inputs);
-
-   else if (inputs.decoded_instr.opcode == op_STORE)
-      alu_outputs = fv_ST (inputs);
-
-   else if (inputs.decoded_instr.opcode == op_MISC_MEM)
-      alu_outputs = fv_MISC_MEM (inputs);
-
-   else if (inputs.decoded_instr.opcode == op_SYSTEM)
-      alu_outputs = fv_SYSTEM (inputs);
-
-`ifdef ISA_A
-   else if (inputs.decoded_instr.opcode == op_AMO)
-      alu_outputs = fv_AMO (inputs);
-`endif
-
-`ifdef ISA_FD
-   // All these just set up for the next stage (Mem box, or FBox)
-   // TODO: op_LOAD_FP, op_STORE_FP
-   // TODO: op_FP: all the floating-point ops
-   // TODO: op_FM_ADD_SUB
-   // TODO: op_FNM_ADD_SUB
-`endif
-
-   else begin
-      alu_outputs.control = CONTROL_TRAP;
-   end
-
-   return alu_outputs;
-endfunction
 
 // ================================================================
-
-`endif
 
 endpackage
