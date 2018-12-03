@@ -120,6 +120,21 @@ typedef 128 CLEN;
 typedef Bit #(CLEN) Capability;
 typedef Bit #(5) CapCSR_Addr;
 
+// "Decoded" capability type
+// Following the doctrine of "all fields" as used for Piccolo's Decoded_Instr
+// field (below) - efficiency could perhaps be improved by using separate structs 
+// for sealed and unsealed capabilities.
+typedef struct {
+    Bit#(15) uperms;
+    Bit#(6)  exponent;
+    Bool     sealed;
+    Bit#(20) bottom;
+    Bit#(20) top;
+    Bit#(24) otype;
+    Bit#(64) addr;
+} Capability_Struct 
+deriving (Bits, Eq);
+
 typedef struct {
     Bit #(1)      tag;
     Capability   capability;
@@ -132,6 +147,45 @@ Tagged_Capability tc_default =
            tag:         0,
            capability:  0
         };
+        
+function Capability_Struct fv_disassemble_cap (Capability cap);
+    return Capability_Struct {
+            uperms:    cap_uperms (cap),
+            exponent:  cap_exp    (cap),
+            sealed:    cap_sealed (cap),
+            bottom:    cap_bottom (cap),
+            top:       cap_top    (cap),
+            otype:     cap_otype  (cap),
+            addr:      cap_addr   (cap)
+    };
+endfunction
+
+function Capability fv_assemble_cap (Capability_Struct cap_s);
+    Capability base = {cap_s.uperms, 2'b0, cap_s.exponent, pack(cap_s.sealed), 
+                        cap_s.bottom, cap_s.top, cap_s.addr};
+    if(cap_s.sealed) begin
+        base[75:64] = cap_s.otype[11:0];
+        base[95:84] = cap_s.otype[23:12];
+    end
+    return base;
+endfunction
+
+function Bit #(15) cap_uperms (Capability x); return x [127:113];       endfunction
+function Bit #(15) cap_exp    (Capability x); return x [110:105];       endfunction
+function Bool      cap_sealed (Capability x); return unpack(x[104]);    endfunction
+function Bit #(64) cap_addr   (Capability x); return x [53:0];          endfunction
+
+function Bit #(15) cap_bottom    (Capability x); 
+    return cap_sealed(x) ? {x[103:96], 12'b0} : x[103:84];
+endfunction
+
+function Bit #(15) cap_top    (Capability x); 
+    return cap_sealed(x) ? {x[83:76], 12'b0} : x[83:64];
+endfunction
+
+function Bit #(24) cap_otype  (Capability x); 
+    return cap_sealed(x) ? {x[95:84], x[75:64]} : 0;
+endfunction
 
 
 Opcode op_CAP       = 7'b10_110_11;  // = 0x5b
