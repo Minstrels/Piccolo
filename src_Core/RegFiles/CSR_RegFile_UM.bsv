@@ -52,13 +52,14 @@ interface CSR_RegFile_IFC;
    method ActionValue #(Maybe #(Word)) mav_read_csr (CSR_Addr csr_addr);
 
 `ifdef CHERI
+
    // Not all CSRs are extended, so we need separate methods for the two options.
+   // TODO: Why do the existing ones use ActionValue/Maybe?
    (* always_ready *)
    method Action write_csr_cap(CapCSR_Addr cap_addr, Tagged_Capability value);
    
-   // CSR read (w.o. side effect)
    (* always_ready *)
-   method Maybe #(Tagged_Capability) read_csr (CapCSR_Addr csr_addr);
+   method Tagged_Capability read_csr_cap (CapCSR_Addr csr_addr);
    
 `endif
 
@@ -237,7 +238,6 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    
    // TODO: We might need/be able to reconfigure this. 
    //       Piccolo's standard PC is implicit in function calls.
-   Reg #(Capability) PCC <- mkRegU;
 
    Reg #(Tagged_Capability) PCC         <- mkRegU;
    Reg #(Tagged_Capability) DDC         <- mkRegU;
