@@ -142,7 +142,7 @@ typedef struct {
 deriving (Bits, Eq);
 
 // All-zeroes capability value
-Tagged_Capability tc_default = 
+Tagged_Capability tc_zero = 
         Tagged_Capability {
            tag:         0,
            capability:  0

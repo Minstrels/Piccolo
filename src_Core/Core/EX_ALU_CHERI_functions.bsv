@@ -399,9 +399,9 @@ endfunction
 // ----------------
 // Shifts (funct3 == f3_SLLI/ f3_SRLI/ f3_SRAI)
 
-function ALU_Outputs fv_OP_and_OP_IMM_shifts (ALU_Inputs inputs);
-   let rs1_val = inputs.rs1_val;
-   let rs2_val = inputs.rs2_val;
+function ALU_Outputs fv_OP_and_OP_IMM_shifts_CHERI (ALU_Inputs inputs);
+   let rs1_val = cap_addr(inputs.rs1_val.capability);
+   let rs2_val = cap_addr(inputs.rs2_val.capability);
 
    IntXL s_rs1_val = unpack (rs1_val);    // Signed version of rs1, for SRA
 
@@ -451,26 +451,26 @@ function ALU_Outputs fv_OP_and_OP_IMM_shifts (ALU_Inputs inputs);
 
 `ifndef SHIFT_SERIAL
    alu_outputs.op_stage2 = OP_Stage2_ALU;
-   alu_outputs.val1      = rd_val;
+   alu_outputs.val1      = change_tagged_addr(tc_zero, rd_val);
 `else
    // Will be executed in serial Shifter_Box later
    alu_outputs.op_stage2 = OP_Stage2_SH;
-   alu_outputs.val1      = rs1_val;
+   alu_outputs.val1      = change_tagged_addr(tc_zero, rs1_val);
    // Encode 'arith-shift' in bit [7] of val2
    WordXL val2 = extend (shamt);
    val2 = (val2 | { 0, instr_b30, 7'b0});
-   alu_outputs.val2 = val2;
+   alu_outputs.val2 = change_tagged_addr(tc_zero, val2);
 `endif
 
    return alu_outputs;
-endfunction: fv_OP_and_OP_IMM_shifts
+endfunction: fv_OP_and_OP_IMM_shifts_CHERI
 
 // ----------------
 // Remaining OP and OP_IMM (excluding shifts, M ops MUL/DIV/REM)
 
-function ALU_Outputs fv_OP_and_OP_IMM (ALU_Inputs inputs);
-   let rs1_val = inputs.rs1_val;
-   let rs2_val = inputs.rs2_val;
+function ALU_Outputs fv_OP_and_OP_IMM_CHERI (ALU_Inputs inputs);
+   let rs1_val = cap_addr(inputs.rs1_val.capability);
+   let rs2_val = cap_addr(inputs.rs2_val.capability);
 
    // Signed versions of rs1_val and rs2_val
    IntXL  s_rs1_val = unpack (rs1_val);
@@ -506,16 +506,16 @@ function ALU_Outputs fv_OP_and_OP_IMM (ALU_Inputs inputs);
    alu_outputs.control   = (trap ? CONTROL_TRAP : CONTROL_STRAIGHT);
    alu_outputs.op_stage2 = OP_Stage2_ALU;
    alu_outputs.rd        = inputs.decoded_instr.rd;
-   alu_outputs.val1      = rd_val;
+   alu_outputs.val1      = change_tagged_addr(tc_zero, rd_val);
 
    return alu_outputs;
-endfunction: fv_OP_and_OP_IMM
+endfunction: fv_OP_and_OP_IMM_CHERI
 
 // ----------------
 // OP_IMM_32 (ADDIW, SLLIW, SRxIW)
 
-function ALU_Outputs fv_OP_IMM_32 (ALU_Inputs inputs);
-   WordXL   rs1_val     = inputs.rs1_val;
+function ALU_Outputs fv_OP_IMM_32_CHERI (ALU_Inputs inputs);
+   WordXL   rs1_val     = cap_addr(inputs.rs1_val.capability);
    IntXL    s_rs1_val   = unpack (rs1_val);
 
    Bit #(5) shamt       = truncate (inputs.decoded_instr.imm12_I);
@@ -556,17 +556,17 @@ function ALU_Outputs fv_OP_IMM_32 (ALU_Inputs inputs);
    alu_outputs.control   = (trap ? CONTROL_TRAP : CONTROL_STRAIGHT);
    alu_outputs.op_stage2 = OP_Stage2_ALU;
    alu_outputs.rd        = inputs.decoded_instr.rd;
-   alu_outputs.val1      = rd_val;
+   alu_outputs.val1      = change_tagged_addr(tc_zero, rd_val);
 
    return alu_outputs;
-endfunction: fv_OP_IMM_32
+endfunction: fv_OP_IMM_32_CHERI
 
 // ----------------
 // OP_32 (excluding 'M' ops: MULW/ DIVW/ DIVUW/ REMW/ REMUW)
 
-function ALU_Outputs fv_OP_32 (ALU_Inputs inputs);
-   Bit #(32) rs1_val = inputs.rs1_val [31:0];
-   Bit #(32) rs2_val = inputs.rs2_val [31:0];
+function ALU_Outputs fv_OP_32_CHERI (ALU_Inputs inputs);
+   Bit #(32) rs1_val = cap_addr(inputs.rs1_val.capability)[31:0];
+   Bit #(32) rs2_val = cap_addr(inputs.rs2_val.capability)[31:0];
 
    // Signed version of rs1_val and rs2_val
    Int #(32) s_rs1_val = unpack (rs1_val);
@@ -598,15 +598,15 @@ function ALU_Outputs fv_OP_32 (ALU_Inputs inputs);
    alu_outputs.control   = (trap ? CONTROL_TRAP : CONTROL_STRAIGHT);
    alu_outputs.op_stage2 = OP_Stage2_ALU;
    alu_outputs.rd        = inputs.decoded_instr.rd;
-   alu_outputs.val1      = rd_val;
+   alu_outputs.val1      = change_tagged_addr(tc_zero, rd_val);
 
    return alu_outputs;
-endfunction: fv_OP_32
+endfunction: fv_OP_32_CHERI
 
 // ----------------------------------------------------------------
 // Upper Immediates
 
-function ALU_Outputs fv_LUI (ALU_Inputs inputs);
+function ALU_Outputs fv_LUI_CHERI (ALU_Inputs inputs);
    Bit #(32)  v32    = { inputs.decoded_instr.imm20_U, 12'h0 };
    IntXL      iv     = extend (unpack (v32));
    let        rd_val = pack (iv);
@@ -614,7 +614,7 @@ function ALU_Outputs fv_LUI (ALU_Inputs inputs);
    let alu_outputs       = alu_outputs_base;
    alu_outputs.op_stage2 = OP_Stage2_ALU;
    alu_outputs.rd        = inputs.decoded_instr.rd;
-   alu_outputs.val1      = rd_val;
+   alu_outputs.val1      = change_tagged_addr(tc_zero, rd_val);
 
    return alu_outputs;
 endfunction
