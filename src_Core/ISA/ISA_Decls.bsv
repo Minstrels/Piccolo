@@ -121,7 +121,7 @@ typedef Bit #(CLEN) Capability;
 typedef Bit #(5) CapCSR_Addr;
 
 // "Decoded" capability type
-// Following the doctrine of "all fields" as used for Piccolo's Decoded_Instr
+// Following the doctrine of "all fields, even unused" as for Piccolo's Decoded_Instr
 // field (below) - efficiency could perhaps be improved by using separate structs 
 // for sealed and unsealed capabilities.
 typedef struct {
@@ -141,12 +141,26 @@ typedef struct {
     } Tagged_Capability
 deriving (Bits, Eq);
 
-// Default zeroed capability register value (not DDC!)
+// All-zeroes capability value
 Tagged_Capability tc_default = 
         Tagged_Capability {
            tag:         0,
            capability:  0
         };
+
+// NULL capability
+// TODO: top correct?
+Tagged_Capability tc_null = fv_assemble_cap(
+    Capability_Struct {
+        uperms:     15'b0,
+        exponent:   6'b1111_11,
+        sealed:     False,
+        bottom:     20'b0,
+        top:        20'bfffff,
+        otype:      24'b0,
+        addr:       64'b0
+    }
+);
         
 function Capability_Struct fv_disassemble_cap (Capability cap);
     return Capability_Struct {
