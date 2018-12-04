@@ -267,43 +267,6 @@ Bit #(5) f5_CGETADDR    = 5'b01111; // = 0x0f
 
 `endif
 
-
-typedef struct {
-   Opcode    opcode;
-
-   RegName   rd;
-   RegName   rs1;
-   RegName   rs2;
-   RegName   rs3;
-   CSR_Addr  csr;
-   
-// ----------------
-// can have one or two fpu sizes (should they be merged sooner than later ?)
-
-`ifdef ISA_F
-   Bit #(2)  funct2;
-`endif
-   Bit #(3)  funct3;
-   Bit #(5)  funct5;
-   Bit #(7)  funct7;
-   Bit #(10) funct10;
-
-   Bit #(12) imm12_I;
-   Bit #(12) imm12_S;
-   Bit #(13) imm13_SB;
-   Bit #(20) imm20_U;
-   Bit #(21) imm21_UJ;
-
-   Bit #(4)  pred;
-   Bit #(4)  succ;
-
-   Bit #(2)  aqrl;
-   } Decoded_Instr
-deriving (FShow, Bits);
-
-//`endif
-
-
 // Cannot define ISA_D unless ISA_F is also defined
 // ISA_F - 32 bit FPU
 // ISA_D - 64 bit FPU
