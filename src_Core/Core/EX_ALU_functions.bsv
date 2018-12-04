@@ -101,7 +101,6 @@ ALU_Outputs alu_outputs_base = ALU_Outputs {control:   CONTROL_STRAIGHT,
 					    // At the moment we check this later in the sequence.
 					    rd:        ?,
 					    csr_valid: False,
-                        cap_mode:  False,
 					    addr:      ?,
 					    val1:      ?,
 					    val2:      ? };
