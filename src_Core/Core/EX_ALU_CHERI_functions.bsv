@@ -290,8 +290,8 @@ function ALU_Outputs fv_BRANCH_CHERI (ALU_Inputs inputs);
     //       address/value part as usual? If not, how does ordering work?
     let rs1_val = cap_addr(inputs.rs1_val.capability);
     let rs2_val = cap_addr(inputs.rs2_val.capability);
-    IntXL s_rs1_val = unpack (inputs.rs1_val);
-    IntXL s_rs2_val = unpack (inputs.rs2_val);
+    IntXL s_rs1_val = unpack (rs1_val);
+    IntXL s_rs2_val = unpack (rs2_val);
     IntXL offset        = extend (unpack (inputs.decoded_instr.imm13_SB));
     let funct3 = inputs.decoded_instr.funct3;
     if inputs.cap_mode begin
@@ -310,7 +310,6 @@ function ALU_Outputs fv_BRANCH_CHERI (ALU_Inputs inputs);
         else if (funct3 == f3_BGEU)  branch_taken = 
             !((rs1_tag && !rs2_tag) || (rs1_tag == rs2_tag && rs1_val < rs2_val));
         else begin
-            // TODO: Is this the correct exception code? 
             trap = True;
             alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
         end
@@ -346,8 +345,8 @@ endfunction
 
 function ALU_Outputs fv_JAL_CHERI (ALU_Inputs inputs);
    IntXL offset  = extend (unpack (inputs.decoded_instr.imm21_UJ));
-   Addr  next_pc = pack (unpack (inputs.pc) + offset);
-   Addr  ret_pc  = inputs.pc + 4;
+   Addr  next_pc = pack (unpack(cap_addr(inputs.pcc.capability)) + offset);
+   Addr  ret_pc  = cap_addr(inputs.pcc.capability) + 4;
 
    // nsharma: 2017-05-26 Bug fix
    // nsharma: next_pc[0] should be cleared for JAL/JALR
@@ -359,8 +358,8 @@ function ALU_Outputs fv_JAL_CHERI (ALU_Inputs inputs);
    alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
    alu_outputs.op_stage2 = OP_Stage2_ALU;
    alu_outputs.rd        = inputs.decoded_instr.rd;
-   alu_outputs.addr      = next_pc;
-   alu_outputs.val1      = ret_pc;
+   alu_outputs.addr      = change_tagged_addr(inputs.pcc, next_pc);
+   alu_outputs.val1      = change_tagged_addr(inputs.pcc, ret_pc);
 
    return alu_outputs;
 endfunction
@@ -368,13 +367,12 @@ endfunction
 // ----------------------------------------------------------------
 // JALR
 
+
 function ALU_Outputs fv_JALR_CHERI (ALU_Inputs inputs);
-   let rs1_val = inputs.rs1_val;
-   let rs2_val = inputs.rs2_val;
+   let rs1_val = cap_addr(inputs.rs1_val.capability);
 
    // Signed versions of rs1_val and rs2_val
    IntXL s_rs1_val = unpack (rs1_val);
-   IntXL s_rs2_val = unpack (rs2_val);
    IntXL offset    = extend (unpack (inputs.decoded_instr.imm12_I));
    Addr  next_pc   = pack (s_rs1_val + offset);
    Addr  ret_pc    = inputs.pc + 4;
@@ -389,8 +387,8 @@ function ALU_Outputs fv_JALR_CHERI (ALU_Inputs inputs);
    alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
    alu_outputs.op_stage2 = OP_Stage2_ALU;
    alu_outputs.rd        = inputs.decoded_instr.rd;
-   alu_outputs.addr      = next_pc;
-   alu_outputs.val1      = ret_pc;
+   alu_outputs.addr      = change_tagged_addr(inputs.pcc, next_pc);
+   alu_outputs.val1      = change_tagged_addr(inputs.pcc, ret_pc);
 
    return alu_outputs;
 endfunction
