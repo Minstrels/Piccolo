@@ -77,9 +77,13 @@ deriving (Eq, Bits, FShow);
 // We do not bypass CSR values, since we stall on CSRRxy insructions.
 
 typedef struct {
-   Bypass_State  bypass_state;
-   RegName       rd;
-   Word          rd_val;
+   Bypass_State         bypass_state;
+   RegName              rd;
+   `ifdef CHERI
+   Tagged_Capability    rd_val;
+   `else
+   Word                 rd_val;
+   `endif
    } Bypass
 deriving (Bits);
 
@@ -107,8 +111,11 @@ Bypass no_bypass = Bypass {bypass_state: BYPASS_RD_NONE,
 // Bypass functions for GPRs
 // Returns '(busy, val)'
 // 'busy' means that the RegName is valid and matches, but the value is not available yet
-
+`ifdef CHERI
+function Tuple2 #(Bool, Tagged_Capability) fn_gpr_bypass (Bypass bypass, RegName rd, Tagged_Capability rd_val);
+`else
 function Tuple2 #(Bool, Word) fn_gpr_bypass (Bypass bypass, RegName rd, Word rd_val);
+`endif
    Bool busy = ((bypass.bypass_state == BYPASS_RD) && (bypass.rd == rd));
    Word val  = (  ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
 		? bypass.rd_val

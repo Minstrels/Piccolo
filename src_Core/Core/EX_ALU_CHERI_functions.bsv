@@ -59,7 +59,9 @@ typedef struct {
    Tagged_Capability    rs1_val;
    Tagged_Capability    rs2_val;
    Bool                 csr_valid;
-   Tagged_Capability    csr_val;
+   WordXL               csr_val;
+   // We read and write capability CSRs through separate channels to base CSRs
+   Tagged_Capability    ccsr_val;
    WordXL               mstatus;
    MISA                 misa;
    } ALU_Inputs
@@ -176,13 +178,13 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
    let alu_outputs = alu_outputs_base;
 
    if (inputs.decoded_instr.opcode == op_BRANCH)
-      alu_outputs = fv_BRANCH_CHERI (inputs);           // IN-PROGRESS
+      alu_outputs = fv_BRANCH (inputs);           // IN-PROGRESS
 
    else if (inputs.decoded_instr.opcode == op_JAL)
-      alu_outputs = fv_JAL_CHERI (inputs);
+      alu_outputs = fv_JAL (inputs);
 
    else if (inputs.decoded_instr.opcode == op_JALR)
-      alu_outputs = fv_JALR_CHERI (inputs);
+      alu_outputs = fv_JALR (inputs);
 
 `ifdef ISA_M
    // TODO: CHERI ops for M extension?
@@ -218,45 +220,45 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
 	    && (   (inputs.decoded_instr.funct3 == f3_SLLI)
 		|| (inputs.decoded_instr.funct3 == f3_SRLI)
 		|| (inputs.decoded_instr.funct3 == f3_SRAI)))
-      alu_outputs = fv_OP_and_OP_IMM_shifts_CHERI (inputs);
+      alu_outputs = fv_OP_and_OP_IMM_shifts (inputs);
 
    // TODO: set up floating point ops for next stage, similar to 'M' setup
 
    // Remaining OP_IMM and OP (excluding shifts and 'M' ops MUL/DIV/REM)
    else if (   (inputs.decoded_instr.opcode == op_OP_IMM)
 	    || (inputs.decoded_instr.opcode == op_OP))
-      alu_outputs = fv_OP_and_OP_IMM_CHERI (inputs);
+      alu_outputs = fv_OP_and_OP_IMM (inputs);
 
 `ifdef RV64
    else if (inputs.decoded_instr.opcode == op_OP_IMM_32)
-      alu_outputs = fv_OP_IMM_32_CHERI (inputs);
+      alu_outputs = fv_OP_IMM_32 (inputs);
 
    // Remaining op_OP_32 (excluding 'M' ops)
    else if (inputs.decoded_instr.opcode == op_OP_32)
-      alu_outputs = fv_OP_32_CHERI (inputs);
+      alu_outputs = fv_OP_32 (inputs);
 `endif
 
    else if (inputs.decoded_instr.opcode == op_LUI)
-      alu_outputs = fv_LUI_CHERI (inputs);
+      alu_outputs = fv_LUI (inputs);
 
    else if (inputs.decoded_instr.opcode == op_AUIPC)
-      alu_outputs = fv_AUIPC_CHERI (inputs);
+      alu_outputs = fv_AUIPC (inputs);
 
    else if (inputs.decoded_instr.opcode == op_LOAD)
-      alu_outputs = fv_LD_CHERI (inputs);
+      alu_outputs = fv_LD (inputs);
 
    else if (inputs.decoded_instr.opcode == op_STORE)
-      alu_outputs = fv_ST_CHERI (inputs);
+      alu_outputs = fv_ST (inputs);
 
    else if (inputs.decoded_instr.opcode == op_MISC_MEM)
-      alu_outputs = fv_MISC_MEM_CHERI (inputs);
+      alu_outputs = fv_MISC_MEM (inputs);
 
    else if (inputs.decoded_instr.opcode == op_SYSTEM)
-      alu_outputs = fv_SYSTEM_CHERI (inputs);
+      alu_outputs = fv_SYSTEM (inputs);
 
 `ifdef ISA_A
    else if (inputs.decoded_instr.opcode == op_AMO)
-      alu_outputs = fv_AMO_CHERI (inputs);
+      alu_outputs = fv_AMO (inputs);
 `endif
 
 `ifdef ISA_FD
@@ -277,7 +279,7 @@ endfunction
 // ----------------------------------------------------------------
 // BRANCH
 
-function ALU_Outputs fv_BRANCH_CHERI (ALU_Inputs inputs);
+function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
     let alu_outputs = alu_outputs_base;
     alu_outputs.rd        = 0;
     alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
@@ -343,7 +345,7 @@ endfunction
 // ----------------------------------------------------------------
 // JAL
 
-function ALU_Outputs fv_JAL_CHERI (ALU_Inputs inputs);
+function ALU_Outputs fv_JAL (ALU_Inputs inputs);
    IntXL offset  = extend (unpack (inputs.decoded_instr.imm21_UJ));
    Addr  next_pc = pack (unpack(cap_addr(inputs.pcc.capability)) + offset);
    Addr  ret_pc  = cap_addr(inputs.pcc.capability) + 4;
@@ -368,7 +370,7 @@ endfunction
 // JALR
 
 
-function ALU_Outputs fv_JALR_CHERI (ALU_Inputs inputs);
+function ALU_Outputs fv_JALR (ALU_Inputs inputs);
    let rs1_val = cap_addr(inputs.rs1_val.capability);
 
    // Signed versions of rs1_val and rs2_val
@@ -399,7 +401,7 @@ endfunction
 // ----------------
 // Shifts (funct3 == f3_SLLI/ f3_SRLI/ f3_SRAI)
 
-function ALU_Outputs fv_OP_and_OP_IMM_shifts_CHERI (ALU_Inputs inputs);
+function ALU_Outputs fv_OP_and_OP_IMM_shifts (ALU_Inputs inputs);
    let rs1_val = cap_addr(inputs.rs1_val.capability);
    let rs2_val = cap_addr(inputs.rs2_val.capability);
 
@@ -463,12 +465,12 @@ function ALU_Outputs fv_OP_and_OP_IMM_shifts_CHERI (ALU_Inputs inputs);
 `endif
 
    return alu_outputs;
-endfunction: fv_OP_and_OP_IMM_shifts_CHERI
+endfunction: fv_OP_and_OP_IMM_shifts
 
 // ----------------
 // Remaining OP and OP_IMM (excluding shifts, M ops MUL/DIV/REM)
 
-function ALU_Outputs fv_OP_and_OP_IMM_CHERI (ALU_Inputs inputs);
+function ALU_Outputs fv_OP_and_OP_IMM (ALU_Inputs inputs);
    let rs1_val = cap_addr(inputs.rs1_val.capability);
    let rs2_val = cap_addr(inputs.rs2_val.capability);
 
@@ -509,12 +511,12 @@ function ALU_Outputs fv_OP_and_OP_IMM_CHERI (ALU_Inputs inputs);
    alu_outputs.val1      = change_tagged_addr(tc_zero, rd_val);
 
    return alu_outputs;
-endfunction: fv_OP_and_OP_IMM_CHERI
+endfunction: fv_OP_and_OP_IMM
 
 // ----------------
 // OP_IMM_32 (ADDIW, SLLIW, SRxIW)
 
-function ALU_Outputs fv_OP_IMM_32_CHERI (ALU_Inputs inputs);
+function ALU_Outputs fv_OP_IMM_32 (ALU_Inputs inputs);
    WordXL   rs1_val     = cap_addr(inputs.rs1_val.capability);
    IntXL    s_rs1_val   = unpack (rs1_val);
 
@@ -559,12 +561,12 @@ function ALU_Outputs fv_OP_IMM_32_CHERI (ALU_Inputs inputs);
    alu_outputs.val1      = change_tagged_addr(tc_zero, rd_val);
 
    return alu_outputs;
-endfunction: fv_OP_IMM_32_CHERI
+endfunction: fv_OP_IMM_32
 
 // ----------------
 // OP_32 (excluding 'M' ops: MULW/ DIVW/ DIVUW/ REMW/ REMUW)
 
-function ALU_Outputs fv_OP_32_CHERI (ALU_Inputs inputs);
+function ALU_Outputs fv_OP_32 (ALU_Inputs inputs);
    Bit #(32) rs1_val = cap_addr(inputs.rs1_val.capability)[31:0];
    Bit #(32) rs2_val = cap_addr(inputs.rs2_val.capability)[31:0];
 
@@ -601,12 +603,12 @@ function ALU_Outputs fv_OP_32_CHERI (ALU_Inputs inputs);
    alu_outputs.val1      = change_tagged_addr(tc_zero, rd_val);
 
    return alu_outputs;
-endfunction: fv_OP_32_CHERI
+endfunction: fv_OP_32
 
 // ----------------------------------------------------------------
 // Upper Immediates
 
-function ALU_Outputs fv_LUI_CHERI (ALU_Inputs inputs);
+function ALU_Outputs fv_LUI (ALU_Inputs inputs);
    Bit #(32)  v32    = { inputs.decoded_instr.imm20_U, 12'h0 };
    IntXL      iv     = extend (unpack (v32));
    let        rd_val = pack (iv);
@@ -799,9 +801,9 @@ function ALU_Outputs fv_SYSTEM (ALU_Inputs inputs);
    // CSRR{W,C,S} and CSRR{W,C,S}I
    else begin
       let  csr_val = inputs.csr_val;
-      WordXL rs1_val = (  (funct3 [2] == 1)
+      WordXL rs1_val = ((funct3 [2] == 1)
 			? extend (inputs.decoded_instr.rs1)    // Immediate zimm
-			: inputs.rs1_val);                     // From rs1 reg
+			: cap_addr(inputs.rs1_val.capability));                     // From rs1 reg
 
       // New value of Rd = old value of csr
       WordXL rd_val = ((inputs.decoded_instr.rd == 0) ? 0 : csr_val);
@@ -914,9 +916,9 @@ function ALU_Outputs fv_SYSTEM (ALU_Inputs inputs);
       alu_outputs.op_stage2 = OP_Stage2_ALU;
       alu_outputs.rd        = inputs.decoded_instr.rd;
       alu_outputs.csr_valid = ((! trap) && write_csr);
-      alu_outputs.addr      = extend (inputs.decoded_instr.csr);
-      alu_outputs.val1      = rd_val;
-      alu_outputs.val2      = csr_val;
+      alu_outputs.addr      = change_tagged_addr(tc_zero, extend (inputs.decoded_instr.csr));
+      alu_outputs.val1      = change_tagged_addr(tc_zero, rd_val);
+      alu_outputs.val2      = change_tagged_addr(tc_zero, csr_val);
    end
 
    return alu_outputs;
