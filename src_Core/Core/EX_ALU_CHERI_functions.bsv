@@ -269,6 +269,14 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
    // TODO: op_FNM_ADD_SUB
 `endif
 
+`ifdef CHERI
+    else if (inputs.decoded_instr.opcode == op_CAP)
+        alu_outputs = fv_CHERI (inputs);
+        
+    else if (inputs.decoded_instr.opcode == op_CAPLOAD)
+        alu_outputs = fv_CHERILOAD (inputs);
+`endif
+
    else begin
       alu_outputs.control = CONTROL_TRAP;
    end
@@ -958,7 +966,121 @@ function ALU_Outputs fv_AMO (ALU_Inputs inputs);
 endfunction
 `endif
 
+// ----------------------------------------------------------------
+// CAPABILITY
+// Non-memory CHERI ops.
 
+function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
+    let alu_outputs = alu_outputs_base;
+    if (inputs.decoded_instr.funct7 == f7_CAPINSPECT) begin
+        return fv_CINSPECT_ETC (inputs);
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CUNSEAL) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_ANDPERM) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_SETOFFSET) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_INCOFFSET) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CCSEAL) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CFROMPTR) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin
+    
+    end
+    else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin
+    return alu_outputs;
+endfunction
+
+function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
+        // Some CHERI ops have a 5-bit decoding value in the rs2 position rather than the
+        // standard position used in the base RISC-V ISA.
+        if      (inputs.decoded_instr.rs2 == f5_CGETPERM) begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CGETTYPE)   begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CGETBASE)   begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CGETLEN)    begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CGETTAG)    begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CGETSEALED) begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CGETOFFSET) begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CGETADDR)   begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CCLEARTAG)  begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CMOVE)      begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CJALR)      begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_FASTCLEAR)  begin
+        
+        end
+        else if (inputs.decoded_instr.rs2 == f5_FPCLEAR)    begin
+        
+        end
+        else begin
+            // Exception type = ILLLEGAL_INSTRUCTION?
+        end
+endfunction
+
+// ----------------------------------------------------------------
+// CAPABILITY LOAD
+// Pass through to memory stage? What details do we need?
+
+function ALU_Outputs fv_CHERILOAD (ALU_Inputs inputs);
+   
+endfunction
 
 // ================================================================
 

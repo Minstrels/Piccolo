@@ -116,6 +116,8 @@ endfunction
 
 `ifdef CHERI
 
+
+
 typedef 128 CLEN;
 typedef Bit #(CLEN) Capability;
 typedef Bit #(5) CapCSR_Addr;
@@ -161,7 +163,7 @@ Tagged_Capability tc_null = fv_assemble_cap(
         addr:       64'b0
     }
 );
-        
+
 function Capability_Struct fv_disassemble_cap (Capability cap);
     return Capability_Struct {
             uperms:    cap_uperms (cap),
@@ -215,10 +217,8 @@ function Tagged_Capability change_tagged_addr (Tagged_Capability old_cap, Addr n
     };
 endfunction
 
-
 Opcode op_CAP       = 7'b10_110_11;  // = 0x5b
 Opcode op_CAPLOAD   = 7'b00_010_11;  // = 0x0b
-
 
 // Some of these are repeated (notably 0x7f for inspection/cleartag/move).
 Bit #(7) f7_CAPINSPECT  = 7'b11_111_11; // = 0x7f
@@ -229,17 +229,19 @@ Bit #(7) f7_SETOFFSET   = 7'b00_011_11; // = 0x0f
 Bit #(7) f7_INCOFFSET   = 7'b00_100_01; // = 0x11
 Bit #(7) f7_CSETBOUNDS  = 7'b00_010_00; // = 0x08
 Bit #(7) f7_CSBOUNDSEX  = 7'b00_010_01; // = 0x09
-Bit #(7) f7_CLEARTAG    = 7'b11_111_11; // = 0x7f
 Bit #(7) f7_CBUILDCAP   = 7'b00_111_01; // = 0x1d
 Bit #(7) f7_CCOPYTYPE   = 7'b00_111_10; // = 0x1e
 Bit #(7) f7_CCSEAL      = 7'b00_111_11; // = 0x1f
 Bit #(7) f7_CTOPTR      = 7'b00_100_10; // = 0x12
 Bit #(7) f7_CFROMPTR    = 7'b00_100_11; // = 0x13
-Bit #(7) f7_CMOVE       = 7'b11_111_11; // = 0x7f
 Bit #(7) f7_CSPECIALRW  = 7'b00_000_01; // = 0x01
-Bit #(7) f7_CJALR       = 7'b11_111_11; // = 0x7f
 Bit #(7) f7_CCALLRET    = 7'b11_111_10; // = 0x7e
 Bit #(7) f7_MEMORYOP    = 7'b00_000_00; // = 0x00
+
+// Repeats can probably be deleted.
+Bit #(7) f7_CMOVE       = 7'b11_111_11; // = 0x7f
+Bit #(7) f7_CJALR       = 7'b11_111_11; // = 0x7f
+Bit #(7) f7_CLEARTAG    = 7'b11_111_11; // = 0x7f
 
 // The majority of capability F3s are 0; these are the exceptions.
 Bit #(3) f3_CINCOFFIMM  = 3'b001; // = 0x1f
@@ -248,9 +250,9 @@ Bit #(3) f3_CSBOUNDIMM  = 3'b010; // = 0x1f
 Bit #(5) f5_CRETURN     = 5'b11111; // = 0x1f
 Bit #(5) f5_CCHECKPERM  = 5'b01000; // = 0x08
 Bit #(5) f5_CCHECKTYPE  = 5'b01001; // = 0x09
-Bit #(5) f5_FASTCLEAR   = 5'b01101; // = 0x0d
-Bit #(5) f5_FASTCLEARFP = 5'b10000; // = 0x10
 
+
+// F5s with F7 of 0x7f ===
 Bit #(5) f5_CGETPERM    = 5'b00000; // = 0x00
 Bit #(5) f5_CGETTYPE    = 5'b00001; // = 0x01
 Bit #(5) f5_CGETBASE    = 5'b00010; // = 0x02
@@ -260,12 +262,28 @@ Bit #(5) f5_CGETSEALED  = 5'b00101; // = 0x05
 Bit #(5) f5_CGETOFFSET  = 5'b00110; // = 0x06
 Bit #(5) f5_CGETADDR    = 5'b01111; // = 0x0f
 
+Bit #(5) f5_CCLEARTAG   = 5'b01011; // = 0x0b
+
+Bit #(5) f5_CMOVE       = 5'b01010; // = 0x0a
+
+Bit #(5) f5_CJALR       = 5'b01100; // = 0x0c
+
+Bit #(5) f5_CCHECKPERM  = 5'b00100; // = 0x08
+Bit #(5) f5_CCHECKTYPE  = 5'b00101; // = 0x09
+
+Bit #(5) f5_FASTCLEAR   = 5'b01101; // = 0x0d
+Bit #(5) f5_FPCLEAR     = 5'b10000; // = 0x10
+// =======================
+
+
+
+`endif
+
 // TODO:    Confirm encoding of memory op
 //          { SIGN   LENGTH[1:0]   LOAD/STORE }
 //          Exception: Quad stores replace unsigned byte stores; DDC quad
 //          load replaces halfword unsigned store.
 
-`endif
 
 // Cannot define ISA_D unless ISA_F is also defined
 // ISA_F - 32 bit FPU
