@@ -207,6 +207,7 @@ function Tagged_Capability increment_pcc(Tagged_Capability pcc);
     return change_tagged_addr(pcc, pcc.capability[63:0] + 4);
 endfunction
 
+// Changes the address field in a capability (i.e. the 64 least significant bits)
 // Generates targets for branches/jumps given an old capability (i.e. PCC) and a new address
 function Tagged_Capability change_tagged_addr (Tagged_Capability old_cap, Addr new_addr);
     Capability new_value = old_cap.capability;

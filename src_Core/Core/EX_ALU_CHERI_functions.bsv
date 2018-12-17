@@ -269,13 +269,11 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
    // TODO: op_FNM_ADD_SUB
 `endif
 
-`ifdef CHERI
     else if (inputs.decoded_instr.opcode == op_CAP)
         alu_outputs = fv_CHERI (inputs);
         
     else if (inputs.decoded_instr.opcode == op_CAPLOAD)
         alu_outputs = fv_CHERILOAD (inputs);
-`endif
 
    else begin
       alu_outputs.control = CONTROL_TRAP;
@@ -966,6 +964,8 @@ function ALU_Outputs fv_AMO (ALU_Inputs inputs);
 endfunction
 `endif
 
+
+
 // ----------------------------------------------------------------
 // CAPABILITY
 // Non-memory CHERI ops.
@@ -1018,60 +1018,73 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     
     end
     else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin
+    
+    end
     return alu_outputs;
 endfunction
 
+// Any operations with opcode 0x5b and f7 0x7f.
 function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
-        // Some CHERI ops have a 5-bit decoding value in the rs2 position rather than the
-        // standard position used in the base RISC-V ISA.
-        if      (inputs.decoded_instr.rs2 == f5_CGETPERM) begin
+    let alu_outputs = alu_outputs_base;
+    let cap_struct  = fv_disassemble_cap (inputs.rs1_val.capability);
+    // Some CHERI ops have a 5-bit decoding value in the rs2 position rather than the
+    // standard position used in the base RISC-V ISA.
+    if      (inputs.decoded_instr.rs2 == f5_CGETPERM)   begin
+        // TODO: Existing definition fits poorly with the elimination of the 256-bit
+        //       capability format. Perhaps a simpler format with the LSBs of rd being
+        //       uperms value would be practical?
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CGETTYPE)   begin
+        // If sealed capability, return otype, otherwise -1.
+        Bit #(64) newVal = fv_checkSealed(inputs.rs1_val) ? 
+                                extend({inputs.rs1_val.capability[95:84], inputs.rs1_val.capability[75:64]}) : 
+                                pack(-1);
+        alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CGETBASE)   begin
         
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CGETTYPE)   begin
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CGETLEN)    begin
         
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CGETBASE)   begin
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CGETTAG)    begin
+        alu_outputs.val1 = change_tagged_addr(tc_zero, extend(inputs.rs1_val.tag));
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CGETSEALED) begin
+        // TODO: Is extend necessary after pack?
+        alu_outputs.val1 = change_tagged_addr(tc_zero, extend(pack(fv_checkSealed(inputs.rs1_val)));
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CGETOFFSET) begin
+    
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CGETADDR)   begin
+        alu_outputs.val1 = change_tagged_addr(tc_zero, inputs.rs1_val.capability[63:0]);
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CCLEARTAG)  begin
         
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CGETLEN)    begin
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CMOVE)      begin
         
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CGETTAG)    begin
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CJALR)      begin
         
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CGETSEALED) begin
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
+    
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
         
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CGETOFFSET) begin
+    end
+    else if (inputs.decoded_instr.rs2 == f5_FASTCLEAR)  begin
         
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CGETADDR)   begin
+    end
+    else if (inputs.decoded_instr.rs2 == f5_FPCLEAR)    begin
         
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CCLEARTAG)  begin
-        
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CMOVE)      begin
-        
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CJALR)      begin
-        
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
-        
-        end
-        else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
-        
-        end
-        else if (inputs.decoded_instr.rs2 == f5_FASTCLEAR)  begin
-        
-        end
-        else if (inputs.decoded_instr.rs2 == f5_FPCLEAR)    begin
-        
-        end
-        else begin
-            // Exception type = ILLLEGAL_INSTRUCTION?
-        end
+    end
+    else begin
+        // Exception type = ILLLEGAL_INSTRUCTION?
+    end
+    return alu_outputs;
 endfunction
 
 // ----------------------------------------------------------------
@@ -1081,6 +1094,18 @@ endfunction
 function ALU_Outputs fv_CHERILOAD (ALU_Inputs inputs);
    
 endfunction
+
+// ----------------------------------------------------------------
+// UTILITY FUNCTIONS
+
+function Bool fv_checkSealed(Tagged_Capability tc);
+    return unpack(tc.capability[104]);
+endfunction
+
+function Bit #(64) fv_getBase(Tagged_Capability tc);
+    //let 
+endfunction
+
 
 // ================================================================
 
