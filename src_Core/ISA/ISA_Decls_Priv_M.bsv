@@ -765,7 +765,11 @@ Exc_Code  exc_code_STORE_AMO_ACCESS_FAULT        = 7;
 
 Exc_Code  exc_code_ECALL_FROM_U                  = 8;
 Exc_Code  exc_code_ECALL_FROM_S                  = 9;
+`ifdef CHERI
+Exc_Code  exc_code_CAPABILITY_EXC                = 10;
+`else
 Exc_Code  exc_code_RESERVED_10                   = 10;
+`endif
 Exc_Code  exc_code_ECALL_FROM_M                  = 11;
 
 Exc_Code  exc_code_INSTR_PAGE_FAULT              = 12;
