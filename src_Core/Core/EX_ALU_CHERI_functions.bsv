@@ -1024,50 +1024,69 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
 endfunction
 
 // Any operations with opcode 0x5b and f7 0x7f.
+// A number of these don't particularly fit with the general structure presented in the
+// CHERI-RISC-V design. The elimination of the 256-bit capability format makes the calculation
+// of some values awkward and unusual, whereas in MIPS they were immediately available. A good
+// example is the definition of getperms. It is well suited to the 256-bit format given the
+// distinction between hardware- and software-defined permissions (perms and uperms), but when
+// only the 128-bit representation is used the separation looks irrational.
 function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     let alu_outputs = alu_outputs_base;
-    let cap_struct  = fv_disassemble_cap (inputs.rs1_val.capability);
+    let rs1_cap  = inputs.rs1_val.capability;
     // Some CHERI ops have a 5-bit decoding value in the rs2 position rather than the
     // standard position used in the base RISC-V ISA.
+    // TODO: Do we need to extend after pack, or does typing sort it out?
     if      (inputs.decoded_instr.rs2 == f5_CGETPERM)   begin
-        // TODO: Existing definition fits poorly with the elimination of the 256-bit
-        //       capability format. Perhaps a simpler format with the LSBs of rd being
-        //       uperms value would be practical?
+        Bit #(15) perms = rs1_cap[127:113];
+        // If we're mimicing the MIPS behaviour, we have a weird gap between perms and uperms
+        Bit #(64) newVal = {45'b0, perms[14:11], 4'b0, perms[10:0]};
+        alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETTYPE)   begin
         // If sealed capability, return otype, otherwise -1.
         Bit #(64) newVal = fv_checkSealed(inputs.rs1_val) ? 
-                                extend({inputs.rs1_val.capability[95:84], inputs.rs1_val.capability[75:64]}) : 
+                                extend({rs1_cap[95:84], rs1_cap[75:64]}) : 
                                 pack(-1);
         alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETBASE)   begin
-        
+        Bit #(64) newVal = fv_getBase(inputs.rs1_val);
+        alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETLEN)    begin
-        
+        Bit #(64) newVal = pack(unpack(fv_getTop(inputs.rs1_val)) - unpack(fv_getBase(inputs.rs1_val)));
+        alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETTAG)    begin
         alu_outputs.val1 = change_tagged_addr(tc_zero, extend(inputs.rs1_val.tag));
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETSEALED) begin
-        // TODO: Is extend necessary after pack?
-        alu_outputs.val1 = change_tagged_addr(tc_zero, extend(pack(fv_checkSealed(inputs.rs1_val)));
+        Bit #(64) newVal = pack(fv_checkSealed(inputs.rs1_val));
+        alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETOFFSET) begin
-    
+        Bit #(64) newVal = pack(unpack(rs1_cap[63:0]) - unpack(fv_getBase(inputs.rs1_val)));
+        alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETADDR)   begin
-        alu_outputs.val1 = change_tagged_addr(tc_zero, inputs.rs1_val.capability[63:0]);
+        alu_outputs.val1 = change_tagged_addr(tc_zero, rs1_cap[63:0]);
     end
     else if (inputs.decoded_instr.rs2 == f5_CCLEARTAG)  begin
-        
+        alu_outputs.val1 = Tagged_Capability {
+            tag: 0,
+            capability: rs1_cap
+        };
     end
     else if (inputs.decoded_instr.rs2 == f5_CMOVE)      begin
-        
+        // To confirm: this is simply a straight copy, including tag?
+        alu_outputs.val1 = inputs.rs1_val;
     end
     else if (inputs.decoded_instr.rs2 == f5_CJALR)      begin
-        
+        // Since we're not using a pointer, we only need to add 4 here.
+        UInt #(64) retAddr = unpack(inputs.pcc.capability[63:0]) + 4;
+        alu_outputs.val1 = change_tagged_addr(tc_zero, retAddr);
+        // TODO: which permissions checks are necessary?
+        //Tagged_Capability target = 
     end
     else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
     
@@ -1082,6 +1101,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         
     end
     else begin
+        alu_outputs.control = CONTROL_TRAP;
         // Exception type = ILLLEGAL_INSTRUCTION?
     end
     return alu_outputs;
@@ -1102,10 +1122,72 @@ function Bool fv_checkSealed(Tagged_Capability tc);
     return unpack(tc.capability[104]);
 endfunction
 
-function Bit #(64) fv_getBase(Tagged_Capability tc);
-    //let 
+function Bit #(6)  fv_getExp  (Tagged_Capability tc);
+    return (tc.capability[110:105]);
 endfunction
 
+function Bit #(20)  fv_getB  (Tagged_Capability tc);
+    if (fv_checkSealed(tc))
+        return {tc.capability[103:96], 12'h000};
+    else
+        return tc.capability[103:84];
+endfunction
+
+function Bit #(20)  fv_getT  (Tagged_Capability tc);
+    if (fv_checkSealed(tc))
+        return {tc.capability[83:76], 12'h000};
+    else
+        return tc.capability[83:64];
+endfunction
+
+function UInt #(2) fv_baseCorrection (Bit #(64) A, UInt #(20) B, UInt #(6) e);
+    UInt #(20) AMid = unpack(A[19+e:e]);
+    UInt #(20) R = unpack(B) - unpack(1 << 12);
+    Bool C1 = (AMid < R);
+    Bool C2 = (B < R);
+    if (C1 && !C2)
+        return -1;
+    else if (C2 && !C1)
+        return 1;
+    else
+        return 0;
+endfunction
+
+function UInt #(2) fv_topCorrection (Bit #(64) A, UInt #(20) B, UInt #(20) T, UInt #(6) e);
+    UInt #(20) AMid = unpack(A[19+e:e]);
+    UInt #(20) R = unpack(B) - unpack(1 << 12);
+    Bool C1 = (AMid < R);
+    Bool C2 = (T < R);
+    if (C1 && !C2)
+        return -1;
+    else if (C2 && !C1)
+        return 1;
+    else
+        return 0;
+endfunction
+
+function Bit #(64) fv_getBase (Tagged_Capability tc);
+    // As defined in 3.3.8/page 81.
+    // We can calculate these here or later, the difference should be arbitrary.
+    Bit  #(64) result = 64'h0000_0000_0000_0000;
+    UInt #(6)  e = unpack(fv_getExp(tc));
+    Bit  #(20) B = fv_getB(tc);
+    result[63:20+e]  = pack(unpack(tc.capability[63:20+e]) + fv_baseCorrection(tc.capability[63:0],unpack(B),e));
+    result[19+e:e] = B;
+    return result;
+endfunction
+
+function Bit #(64) fv_getTop  (Tagged_Capability tc);
+    // As defined in 3.3.8/page 81.
+    // We can calculate these here or later, the difference should be arbitrary.
+    Bit  #(64) result = 64'h0000_0000_0000_0000;
+    UInt #(6)  e = unpack(fv_getExp(tc));
+    Bit  #(20) T = fv_getT(tc);
+    Bit  #(20) B = fv_getB(tc);
+    result[63:20+e]  = pack(unpack(tc.capability[63:20+e]) + fv_topCorrection(tc.capability[63:0],unpack(B),unpack(T),e));
+    result[19+e:e] = T;
+    return result;
+endfunction
 
 // ================================================================
 
