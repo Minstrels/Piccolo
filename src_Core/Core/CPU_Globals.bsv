@@ -147,6 +147,9 @@ typedef enum {  CONTROL_STRAIGHT
 	      , CONTROL_URET
 	      , CONTROL_WFI
 	      , CONTROL_TRAP
+          `ifdef CHERI
+          , CONTROL_CLEAR // Indicates a register-clearing instruction
+          `endif
    } Control
 deriving (Eq, Bits, FShow);
 

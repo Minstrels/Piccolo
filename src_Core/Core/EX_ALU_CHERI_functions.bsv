@@ -271,9 +271,10 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
 
     else if (inputs.decoded_instr.opcode == op_CAP)
         alu_outputs = fv_CHERI (inputs);
-        
-    else if (inputs.decoded_instr.opcode == op_CAPLOAD)
-        alu_outputs = fv_CHERILOAD (inputs);
+    
+    // Currently only using 0x5b opcode
+    //else if (inputs.decoded_instr.opcode == op_CAPLOAD)
+        //alu_outputs = fv_CHERILOAD (inputs);
 
    else begin
       alu_outputs.control = CONTROL_TRAP;
@@ -972,52 +973,52 @@ endfunction
 
 function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let alu_outputs = alu_outputs_base;
-    if (inputs.decoded_instr.funct7 == f7_CAPINSPECT) begin
+    if (inputs.decoded_instr.funct7 == f7_CAPINSPECT) begin // 0x7f
         return fv_CINSPECT_ETC (inputs);
     end
-    else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin
+    else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin // 0x0b
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_CUNSEAL) begin
+    else if (inputs.decoded_instr.funct7 == f7_CUNSEAL) begin // 0x0c
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_ANDPERM) begin
+    else if (inputs.decoded_instr.funct7 == f7_ANDPERM) begin // 0x0d
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_SETOFFSET) begin
+    else if (inputs.decoded_instr.funct7 == f7_SETOFFSET) begin // 0x0f
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_INCOFFSET) begin
+    else if (inputs.decoded_instr.funct7 == f7_INCOFFSET) begin // 0x11
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin
+    else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin // 0x08
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin
+    else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin // 0x09
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin
+    else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin // 0x1d
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin
+    else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin // 0x1e
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_CCSEAL) begin
+    else if (inputs.decoded_instr.funct7 == f7_CCSEAL) begin // 0x1f
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin
+    else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin // 0x12
+        
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CFROMPTR) begin // 0x13
+        
+    end
+    else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin // 0x01
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_CFROMPTR) begin
+    else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
     
     end
-    else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin
+    else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin // 0x00
     
     end
     return alu_outputs;
@@ -1078,27 +1079,47 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         };
     end
     else if (inputs.decoded_instr.rs2 == f5_CMOVE)      begin
-        // To confirm: this is simply a straight copy, including tag?
+        // TODO: this is simply a straight copy, including tag?
         alu_outputs.val1 = inputs.rs1_val;
     end
     else if (inputs.decoded_instr.rs2 == f5_CJALR)      begin
         // Since we're not using a pointer, we only need to add 4 here.
         UInt #(64) retAddr = unpack(inputs.pcc.capability[63:0]) + 4;
-        alu_outputs.val1 = change_tagged_addr(tc_zero, retAddr);
-        // TODO: which permissions checks are necessary?
-        //Tagged_Capability target = 
+        alu_outputs.val1 = change_tagged_addr(inputs.pcc, retAddr);
+        // TODO: priority of exceptions?
+        match { .trap, .new_pcc } = fv_getCheckAndTarget (rs1_val, pcc);
+        alu_outputs.addr = new_pcc;
+        if (trap) begin
+            alu_outputs.control = CONTROL_TRAP;
+            alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+        end
+        else begin
+            // Other exception remaining is alignment.
+            alu_outputs.exc_code = exc_code_INSTR_ADDR_MISALIGNED;
+            alu_outputs.control = ((new_pcc.capability[1:0] == 2'b00) ? CONTROL_BRANCH : CONTROL_TRAP);
+        end
     end
+    // Comments in the spec suggest check-perm/type might be removed in future.
     else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
     
     end
     else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
         
     end
+    // As these functions won't write back to registers like most do, it makes sense
+    // to use a new CONTROL type.
+    // As for ALU output values, we'll set val1[1:0] = quadrant, val2[7:0] = mask, and addr[0] = GP/FP
     else if (inputs.decoded_instr.rs2 == f5_FASTCLEAR)  begin
-        
+        alu_outputs.control = CONTROL_CLEAR;
+        alu_outputs.val1 = change_tagged_addr(tc_zero, extend(inputs.instr[19:18]));
+        alu_outputs.val2 = change_tagged_addr(tc_zero, extend({inputs.instr[17:15], inputs.instr[11:7]}));
+        alu_outputs.addr = change_tagged_addr(tc_zero, 64'h0);
     end
     else if (inputs.decoded_instr.rs2 == f5_FPCLEAR)    begin
-        
+        alu_outputs.control = CONTROL_CLEAR;
+        alu_outputs.val1 = change_tagged_addr(tc_zero, extend(inputs.instr[19:18]));
+        alu_outputs.val2 = change_tagged_addr(tc_zero, extend({inputs.instr[17:15], inputs.instr[11:7]}));
+        alu_outputs.addr = change_tagged_addr(tc_zero, 64'h1);
     end
     else begin
         alu_outputs.control = CONTROL_TRAP;
@@ -1112,7 +1133,7 @@ endfunction
 // Pass through to memory stage? What details do we need?
 
 function ALU_Outputs fv_CHERILOAD (ALU_Inputs inputs);
-   
+   match { .trap, .addrval } = fv_getCheckAndTarget (rs1_val, pcc);
 endfunction
 
 // ----------------------------------------------------------------
@@ -1187,6 +1208,12 @@ function Bit #(64) fv_getTop  (Tagged_Capability tc);
     result[63:20+e]  = pack(unpack(tc.capability[63:20+e]) + fv_topCorrection(tc.capability[63:0],unpack(B),unpack(T),e));
     result[19+e:e] = T;
     return result;
+endfunction
+
+// Bool = trap status, capability = target.
+// This checks capability issues (permissions, bounds & sealing).
+function Tuple2# (Bool , Tagged_Capability) fv_getCheckAndTarget (Tagged_Capability rs1, Tagged_Capability pcc);
+    
 endfunction
 
 // ================================================================
