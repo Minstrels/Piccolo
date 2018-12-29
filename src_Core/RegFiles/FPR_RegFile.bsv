@@ -47,13 +47,18 @@ interface FPR_RegFile_IFC;
    // FPR write
    (* always_ready *)
    method Action write_rd (RegName rd, WordFL rd_val);
-
+   
+`ifdef CHERI
+   (* always_ready *)
+   method Action clear_quarter (Bit #(2) QID, Bit #(8) Mask);
+`endif
+   
 endinterface
 
 // ================================================================
 // Major states of mkFPR_RegFile module
 
-typedef enum { RF_RESET_START, RF_RESETTING, RF_RUNNING } RF_State
+typedef enum { RF_RESET_START, RF_RESETTING, RF_RUNNING, RF_CLEARING } RF_State
 deriving (Eq, Bits, FShow);
 
 // ================================================================
@@ -63,6 +68,13 @@ module mkFPR_RegFile (FPR_RegFile_IFC);
 
    Reg #(RF_State) rg_state      <- mkReg (RF_RESET_START);
 
+   // Starting register ID for CLEAR
+   Reg #(Bit #(2)) rg_base <- mkRegU;
+   // Bit mask for CLEAR
+   Reg #(Bit #(8)) rg_mask <- mkRegU;
+   // Currently examined register
+   Reg #(Bit #(3)) rg_sub  <- mkRegU;
+   
    // Reset
    FIFOF #(Token) f_reset_rsps <- mkFIFOF;
 
@@ -97,6 +109,20 @@ module mkFPR_RegFile (FPR_RegFile_IFC);
       rg_state <= RF_RUNNING;
 `endif
    endrule
+   
+   // ----------------------------------------------------------------
+   // CHERI-RISC-V Fast-clearing instructions
+   // This loop clears a subset of the registers (up to 1/8 of the file)
+   
+`ifdef CHERI
+   rule rl_fastclear (rg_state == RF_CLEARING);
+      if (rg_mask[rg_sub] == 1)
+         regfile.upd ({rg_base, rg_sub}, 0);
+      if (rg_sub == 7)
+         rg_state <= RF_RUNNING;
+      rg_sub <= rg_sub + 1;
+   endrule
+`endif
 
    // ----------------------------------------------------------------
    // INTERFACE
@@ -137,6 +163,13 @@ module mkFPR_RegFile (FPR_RegFile_IFC);
    // FPR write
    method Action write_rd (RegName rd, WordFL rd_val);
       regfile.upd (rd, rd_val);
+   endmethod
+   
+   method Action clear_quarter (Bit #(2) QID, Bit #(8) Mask);
+      rg_base  <= QID;
+      rg_mask  <= Mask;
+      rg_sub   <= 3'b000;
+      rg_state <= RF_CLEARING;
    endmethod
 
 endmodule
