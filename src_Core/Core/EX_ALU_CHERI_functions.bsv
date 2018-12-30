@@ -969,62 +969,107 @@ endfunction
 
 // ----------------------------------------------------------------
 // CAPABILITY
-// Non-memory CHERI ops.
+// CHERI ops, opcode 0x5b
 
 function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let alu_outputs = alu_outputs_base;
-    if (inputs.decoded_instr.funct7 == f7_CAPINSPECT) begin // 0x7f
-        return fv_CINSPECT_ETC (inputs);
-    end
-    else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin // 0x0b
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_CUNSEAL) begin // 0x0c
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_ANDPERM) begin // 0x0d
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_SETOFFSET) begin // 0x0f
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_INCOFFSET) begin // 0x11
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin // 0x08
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin // 0x09
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin // 0x1d
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin // 0x1e
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_CCSEAL) begin // 0x1f
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin // 0x12
+    if (inputs.decoded_instr.funct3 == 3'b001) begin // CIncOffsetImmediate
         
     end
-    else if (inputs.decoded_instr.funct7 == f7_CFROMPTR) begin // 0x13
+    else if (inputs.decoded_instr.funct3 == 3'b010) begin // CSetBoundsImmediate
         
     end
-    else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin // 0x01
-    
+    else if (inputs.decoded_instr.funct3 == 3'b000) begin // Other instructions
+        if (inputs.decoded_instr.funct7 == f7_CAPINSPECT) begin // 0x7f
+            return fv_CINSPECT_ETC (inputs);
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin // 0x0b
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CUNSEAL) begin // 0x0c
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_ANDPERM) begin // 0x0d
+            // TODO: Where do we get the permission bits from? Still using the same perms/uperms
+            // split as in CHERI-MIPS, or just the 15-bit muperms field in the 128-bit version?
+            if (fv_checkSealed(inputs.rs1_val) || (inputs.rs1_val.tag == 1'b0)) begin
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+                alu_outputs.control  = CONTROL_TRAP;
+            end
+            else begin
+                Bit #(128) newperms = {inputs.rs2_val[14:0], 113'h_1fff_ffff_ffff_ffff_ffff_ffff};
+                alu_outputs.val1 = Tagged_Capability {
+                    tag: 1'b1,
+                    capability: (inputs.rs1_val.capability & newperms)
+                };
+            end
+        end
+        else if (inputs.decoded_instr.funct7 == f7_SETOFFSET) begin // 0x0f
+            if (fv_checkSealed(inputs.rs1_val) && (inputs.rs1_val.tag == 1'b1)) begin
+                alu_outputs.control  = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            end
+            else begin
+                alu_outputs.val1 = Tagged_Capability {
+                    tag: inputs.rs1_val.tag,
+                    capability: {inputs.rs1_val.capability[128:64], inputs.rs2_val.capability[63:0]}
+                };
+            end
+        end
+        else if (inputs.decoded_instr.funct7 == f7_INCOFFSET) begin // 0x11
+            if (fv_checkSealed(inputs.rs1_val) && (inputs.rs1_val.tag == 1'b1)) begin
+                alu_outputs.control  = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            end
+            else begin
+                Bit #(64) newOffset = inputs.rs1_val.capability[63:0] + inputs.rs2_val.capability[63:0];
+                alu_outputs.val1 = Tagged_Capability {
+                    tag: inputs.rs1_val.tag,
+                    capability: {inputs.rs1_val.capability[128:64], newOffset};
+                };
+            end
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin // 0x08
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin // 0x09
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin // 0x1d
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin // 0x1e
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CCSEAL) begin // 0x1f
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin // 0x12
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CFROMPTR) begin // 0x13
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin // 0x01
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
+            
+        end
+        else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin // 0x00
+            
+        end
+        else begin
+            alu_outputs.control = CONTROL_TRAP;
+        end
     end
-    else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
-    
-    end
-    else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin // 0x00
-    
+    else begin
+        alu_outputs.control = CONTROL_TRAP;
     end
     return alu_outputs;
 endfunction
 
-// Any operations with opcode 0x5b and f7 0x7f.
+// Any operations with opcode 0x5b, f3 0, and f7 0x7f.
 // A number of these don't particularly fit with the general structure presented in the
 // CHERI-RISC-V design. The elimination of the 256-bit capability format makes the calculation
 // of some values awkward and unusual, whereas in MIPS they were immediately available. A good
