@@ -1087,9 +1087,8 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         UInt #(64) retAddr = unpack(inputs.pcc.capability[63:0]) + 4;
         alu_outputs.val1 = change_tagged_addr(inputs.pcc, retAddr);
         // TODO: priority of exceptions?
-        match { .trap, .new_pcc } = fv_getCheckAndTarget (rs1_val, pcc);
         alu_outputs.addr = new_pcc;
-        if (trap) begin
+        if (!fv_checkValid (rs1_val)) begin
             alu_outputs.control = CONTROL_TRAP;
             alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
         end
@@ -1106,7 +1105,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
         
     end
-    // As these functions won't write back to registers like most do, it makes sense
+    // As these intructions won't write back to registers like most do, it makes sense
     // to use a new CONTROL type.
     // As for ALU output values, we'll set val1[1:0] = quadrant, val2[7:0] = mask, and addr[0] = GP/FP
     else if (inputs.decoded_instr.rs2 == f5_FASTCLEAR)  begin
@@ -1123,7 +1122,6 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     end
     else begin
         alu_outputs.control = CONTROL_TRAP;
-        // Exception type = ILLLEGAL_INSTRUCTION?
     end
     return alu_outputs;
 endfunction
@@ -1212,8 +1210,21 @@ endfunction
 
 // Bool = trap status, capability = target.
 // This checks capability issues (permissions, bounds & sealing).
-function Tuple2# (Bool , Tagged_Capability) fv_getCheckAndTarget (Tagged_Capability rs1, Tagged_Capability pcc);
-    
+function Bool fv_checkValid (Tagged_Capability rs1);
+    Bit #(64) base   = fv_getBase(rs1);
+    Bit #(64) top    = fv_getTop (rs1);
+    Bit #(64) addr   = rs1.capability[63:0];
+    Bit #(15) perms  = rs1.capability[127:113];
+    Bool      sealed = fv_checkSealed(rs1);
+    if (rs1.tag == 1'b0) // Tag violation
+        return False;
+    if (sealed) // Seal violation
+        return False;
+    if (perms[1] == 1'b0) // Permit_Execute violation
+        return False;
+    if (((addr + 4) > top) || (addr < base)) // Bounds violation
+        return False;
+    return True;
 endfunction
 
 // ================================================================
