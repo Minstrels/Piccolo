@@ -152,7 +152,13 @@ Tagged_Capability tc_zero =
 
 // NULL capability
 // TODO: top correct?
-Tagged_Capability tc_null = fv_assemble_cap(
+Tagged_Capability tc_null =
+        Tagged_Capability {
+            tag: 1'b0,
+            capability: cap_null
+        };
+
+Capability cap_null = fv_assemble_cap(
     Capability_Struct {
         uperms:     15'b0,
         exponent:   6'b1111_11,

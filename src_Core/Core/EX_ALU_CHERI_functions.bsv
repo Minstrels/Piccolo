@@ -1048,7 +1048,14 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             
         end
         else if (inputs.decoded_instr.funct7 == f7_CFROMPTR) begin // 0x13
-            
+            if(inputs.rs2_val.capability[63:0] == 64'b0)
+                alu_outputs.val1 = tc_null;
+            else
+                alu_outputs.val1 = Tagged_Capability {
+                    tag:        inputs.rs1_val.tag,
+                    capability: {inputs.rs1_val.capability[127:64], inputs.rs2_val.capability[63:0]}
+                }
+                 
         end
         else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin // 0x01
             
