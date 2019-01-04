@@ -2,7 +2,7 @@
 
 //-
 // RVFI_DII modifications:
-//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018-2019 Jack Deeley
 //     Copyright (c) 2018 Peter Rugg
 //     All rights reserved.
 //
@@ -126,6 +126,8 @@ endfunction
 // ================================================================
 // Trap information
 
+
+// TODO: Change this for capability-length EPCC.
 typedef struct {
    Addr      epc;
    Exc_Code  exc_code;

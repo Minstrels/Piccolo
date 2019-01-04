@@ -2,7 +2,7 @@
 
 //-
 // RVFI_DII modifications:
-//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018-2019 Jack Deeley
 //     Copyright (c) 2018 Peter Rugg
 //     All rights reserved.
 //
@@ -310,12 +310,12 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       // TODO: do we suppress MINSTRET increment if we write minstret here?
       Bool wrote_csr_minstret = False;
       if (data_to_stage2.csr_valid) begin
-	 CSR_Addr csr_addr = truncate (data_to_stage2.addr);
-	 WordXL   csr_val  = data_to_stage2.val2;
-	 csr_regfile.write_csr (csr_addr, csr_val);
-	 wrote_csr_minstret = ((csr_addr == csr_minstret) || (csr_addr == csr_minstreth));
-	 if (verbosity > 1)
-	    $display ("    S1: write CSR 0x%0h, val 0x%0h", csr_addr, csr_val);
+        CSR_Addr csr_addr = truncate (data_to_stage2.addr);
+        WordXL   csr_val  = data_to_stage2.val2;
+        csr_regfile.write_csr (csr_addr, csr_val);
+        wrote_csr_minstret = ((csr_addr == csr_minstret) || (csr_addr == csr_minstreth));
+        if (verbosity > 1)
+            $display ("    S1: write CSR 0x%0h, val 0x%0h", csr_addr, csr_val);
       end
    endmethod
 

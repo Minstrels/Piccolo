@@ -2,7 +2,7 @@
 
 //-
 // RVFI_DII modifications:
-//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018-2019 Jack Deeley
 //     All rights reserved.
 //
 //     This software was developed by SRI International and the University of
@@ -281,8 +281,6 @@ Bit #(5) f5_CCHECKTYPE  = 5'b00101; // = 0x09
 Bit #(5) f5_FASTCLEAR   = 5'b01101; // = 0x0d
 Bit #(5) f5_FPCLEAR     = 5'b10000; // = 0x10
 // =======================
-
-
 
 `endif
 
@@ -897,27 +895,20 @@ endfunction
     // TODO: Confirm encoding of new capabilities
     // TODO: Scratch registers aren't given in CHERI spec as extending the base CSRs, so are they separate?
     
-    CSR_Addr csr_ddc          = 12'h000;    // Default Data Capability
-    CSR_Addr csr_uepcc        = 12'h041;    // User exception capability
-    CSR_Addr csr_udc          = 12'h000;    // User data capability
-    CSR_Addr csr_uvc          = 12'h005;    // User vector capability  
-    CSR_Addr csr_usc          = 12'h040;    // User scratch capability
-
-    // Supervisor mode and above:
-    CSR_Addr csr_sepcc        = 12'h141;
-    CSR_Addr csr_svc          = 12'h105;
-    CSR_Addr csr_ssc          = 12'h140;
-
-    // Hypervisor mode and above
-    //CSR_Addr csr_hepcc        = 12'h241;
-    //CSR_Addr csr_hdc          = 12'h___;
-    //CSR_Addr csr_hvc          = 12'h205;
-    //CSR_Addr csr_hsc          = 12'h240;
-
-    // Machine mode and above
-    CSR_Addr csr_mepcc        = 12'h341;
-    CSR_Addr csr_mvc          = 12'h305;
-    CSR_Addr csr_msc          = 12'h340;
+    //
+    CapCSR_Addr ccsr_ddc        = 5'd01;
+    
+    CapCSR_Addr ccsr_utcc       = 5'd04;
+    CapCSR_Addr ccsr_uscratchc  = 5'd06;
+    CapCSR_Addr ccsr_uscratchc  = 5'h07;
+    
+    CapCSR_Addr ccsr_stcc       = 5'd12;
+    CapCSR_Addr ccsr_sscratchc  = 5'd14;
+    CapCSR_Addr ccsr_sscratchc  = 5'd15;
+    
+    CapCSR_Addr ccsr_mtcc       = 5'd28;
+    CapCSR_Addr ccsr_mscratchc  = 5'd30;
+    CapCSR_Addr ccsr_mscratchc  = 5'd31;
     
 `endif
 
