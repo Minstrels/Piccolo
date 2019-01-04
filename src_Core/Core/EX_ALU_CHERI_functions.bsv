@@ -2,7 +2,7 @@
 
 //-
 // RVFI_DII modifications:
-//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018-2019 Jack Deeley
 //     Copyright (c) 2018 Peter Rugg
 //     All rights reserved.
 //
@@ -60,7 +60,6 @@ typedef struct {
    Tagged_Capability    rs2_val;
    Bool                 csr_valid;
    WordXL               csr_val;
-   // We read and write capability CSRs through separate channels to base CSRs
    Tagged_Capability    ccsr_val;
    WordXL               mstatus;
    MISA                 misa;
@@ -77,10 +76,11 @@ typedef struct {
    Op_Stage2            op_stage2;
    RegName              rd;
    Bool                 csr_valid;
+   Bool                 ccsr_valid;
    Bool                 cap_mode;
    Tagged_Capability    addr;       // Branch, jump: newPC
                                     // Mem ops and AMOs: mem addr
-                                    // CSRRx: csr addr
+                                    // CSRRx: csr addr, CSpecialRW: CapCSR addr
 
    Tagged_Capability    val1;   // OP_Stage2_ALU: result for Rd (ALU ops: result, JAL/JALR: return PC,
                                 //                           CSSRx: old value of CSR)
@@ -95,16 +95,17 @@ typedef struct {
 deriving (Bits, FShow);
 
 ALU_Outputs alu_outputs_base = ALU_Outputs {control:   CONTROL_STRAIGHT,
-					    exc_code:  exc_code_ILLEGAL_INSTRUCTION,
-					    op_stage2: ?,
+					    exc_code:   exc_code_ILLEGAL_INSTRUCTION,
+					    op_stage2:  ?,
 					    // Wolf's verification model requires rd to be 0 for non-updating
 					    // At the moment we check this later in the sequence.
-					    rd:        ?,
-					    csr_valid: False,
-                        cap_mode:  False,
-					    addr:      ?,
-					    val1:      ?,
-					    val2:      ? };
+					    rd:         ?,
+					    csr_valid:  False,
+					    ccsr_valid: False,
+                        cap_mode:   False,
+					    addr:       ?,
+					    val1:       ?,
+					    val2:       ? };
 
 // ================================================================
 
@@ -1055,9 +1056,13 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                     tag:        inputs.rs1_val.tag,
                     capability: {inputs.rs1_val.capability[127:64], inputs.rs2_val.capability[63:0]}
                 }
-                 
         end
         else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin // 0x01
+            // TODO: checks for...
+            //     - valid CapCSR_Addr
+            //     - privilege
+            //     - permissions
+            // Base Piccolo doesn't seem to check addresses for CSRRX?
             
         end
         else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
@@ -1261,7 +1266,7 @@ function Bit #(64) fv_getTop  (Tagged_Capability tc);
 endfunction
 
 // Bool = trap status, capability = target.
-// This checks capability issues (permissions, bounds & sealing).
+// This checks capability dereferencing issues (permissions, bounds & sealing).
 function Bool fv_checkValid (Tagged_Capability rs1);
     Bit #(64) base   = fv_getBase(rs1);
     Bit #(64) top    = fv_getTop (rs1);
@@ -1277,6 +1282,14 @@ function Bool fv_checkValid (Tagged_Capability rs1);
     if (((addr + 4) > top) || (addr < base)) // Bounds violation
         return False;
     return True;
+endfunction
+
+function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
+    Bool base = ((addr == 5'h00) || (addr == 5'h01));
+    Bool usr  = ((addr[4:2] == 3'b001) && addr[1:0] != 2'b01);
+    Bool supr  = ((addr[4:2] == 3'b011) && addr[1:0] != 2'b01);
+    Bool mach  = ((addr[4:2] == 3'b111) && addr[1:0] != 2'b01);
+    return (base || use || supr || mach);
 endfunction
 
 // ================================================================
