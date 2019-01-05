@@ -297,7 +297,7 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
     Addr  branch_target = pack (unpack(cap_addr(inputs.pcc.capability)) + offset);
     
     // TODO: Does capability-mode comparison compare the entire value, or just the 
-    //       address/value part as usual? If not, how does ordering work?
+    //       address/value part as usual?
     let rs1_val = cap_addr(inputs.rs1_val.capability);
     let rs2_val = cap_addr(inputs.rs2_val.capability);
     IntXL s_rs1_val = unpack (rs1_val);
@@ -1013,7 +1013,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             else begin
                 alu_outputs.val1 = Tagged_Capability {
                     tag: inputs.rs1_val.tag,
-                    capability: {inputs.rs1_val.capability[128:64], inputs.rs2_val.capability[63:0]}
+                    capability: {inputs.rs1_val.capability[127:64], inputs.rs2_val.capability[63:0]}
                 };
             end
         end
@@ -1026,7 +1026,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 Bit #(64) newOffset = inputs.rs1_val.capability[63:0] + inputs.rs2_val.capability[63:0];
                 alu_outputs.val1 = Tagged_Capability {
                     tag: inputs.rs1_val.tag,
-                    capability: {inputs.rs1_val.capability[128:64], newOffset};
+                    capability: {inputs.rs1_val.capability[127:64], newOffset};
                 };
             end
         end
@@ -1058,12 +1058,25 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 }
         end
         else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin // 0x01
-            // TODO: checks for...
-            //     - valid CapCSR_Addr
-            //     - privilege
-            //     - permissions
-            // Base Piccolo doesn't seem to check addresses for CSRRX?
-            
+            // TODO: Are we keeping the base ISA principle that rs1 = 0 => no write?
+            let ccsr_addr = inputs.decoded_instr.rs2;
+            Bool addr_valid = fv_check_CapCSR_Addr(ccsr_addr);          // IDx points to a valid register
+            Bool priv_valid = (inputs.cur_priv >= ccsr_addr[4:3]);      // We have the right privilege to write the CCSR
+            Bool perm_valid = unpack(inputs.pcc.capability[123]);       // We have the ACCESS_SPECIAL permission in PCC.
+            Bool all_valid = addr_valid && priv_valid && perm_valid;
+            alu_outputs.ccsr_valid = (inputs.decoded_instr.rs1 != 0);   // We are writing the CCSR
+            // Access/read fault, or trying to write PCC
+            if ((!all_valid) || (ccsr_addr == 0 && inputs.decoded_instr.rs1 != 0)) begin
+                // Permissions are a capability issue, addressing and privilege fit existing exception paradigms.
+                alu_outputs.exc_code = (perm_valid ? exc_code_CAPABILITY_EXC : exc_code_ILLEGAL_INSTRUCTION);
+                alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.ccsr_valid = False;
+            end
+            // This is safe - we will have thrown the trap above if not.
+            // Val1 => rd, Val2 => CCSR register
+            alu_outputs.addr = change_tagged_addr(tc_zero,zeroExtend(ccsr_addr));
+            alu_outputs.val1 = ccsr_val;
+            alu_outputs.val2 = inputs.rs1_val;
         end
         else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
             
@@ -1285,11 +1298,11 @@ function Bool fv_checkValid (Tagged_Capability rs1);
 endfunction
 
 function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
-    Bool base = ((addr == 5'h00) || (addr == 5'h01));
-    Bool usr  = ((addr[4:2] == 3'b001) && addr[1:0] != 2'b01);
-    Bool supr  = ((addr[4:2] == 3'b011) && addr[1:0] != 2'b01);
-    Bool mach  = ((addr[4:2] == 3'b111) && addr[1:0] != 2'b01);
-    return (base || use || supr || mach);
+    Bool base = ((addr == 5'h01) || (addr == 5'h01));
+    Bool user = ((addr[4:2] == 3'b001) && addr[1:0] != 2'b01);
+    Bool supr = ((addr[4:2] == 3'b011) && addr[1:0] != 2'b01);
+    Bool mach = ((addr[4:2] == 3'b111) && addr[1:0] != 2'b01);
+    return (base || user || supr || mach);
 endfunction
 
 // ================================================================

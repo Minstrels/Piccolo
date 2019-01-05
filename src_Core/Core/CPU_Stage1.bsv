@@ -116,7 +116,13 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    // Combinational output function
 
    function Output_Stage1 fv_out;
+      // TODO: How are we handling memory changes? Where will PCC be derived instead of PC?
+   `ifdef CHERI
+      let pcc           = ?;
+      let pc            = pcc.capability[63:0];
+   `else
       let pc            = icache.pc;
+   `endif
       let instr         = icache.instr;
       let decoded_instr = fv_decode (instr);
       let funct3        = decoded_instr.funct3;
@@ -171,14 +177,14 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 		       && (! csr_write_fault));
 
         let csr_val   = fromMaybe (?, m_csr_val);
+        let ccsr_val  = (rs2 == 0) ? pcc : csr_regfile.read_csr_cap(rs2));
 
         // ALU function
         // TODO: PCC vs PC?
-        // TODO: CCSR values.
         let alu_inputs = ALU_Inputs {
                    cur_priv:       cur_priv,
                    `ifdef CHERI
-                   pcc:            ?,
+                   pcc:            pcc,
                    `else
 				   pc:             pc,
                    `endif
@@ -186,7 +192,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 				   decoded_instr:  decoded_instr,
                    `ifdef CHERI
                    cap_mode:       False,
-                   ccsr_val:       ?,
+                   ccsr_val:       ccsr_val,
                    `endif
 				   rs1_val:        rs1_val_bypassed,
 				   rs2_val:        rs2_val_bypassed,
@@ -250,7 +256,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	    let trap_info = Trap_Info {epc:      pc,
 				    exc_code: alu_outputs.exc_code,
 				    badaddr:  badaddr};  // v1.10 - mtval
-
+`ifdef CHERI
+        let next_pcc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : change_tagged_addr(pcc,pc+4));
+`endif
 	    let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : pc + 4);
 `ifdef RVFI
 	    let info_RVFI = Data_RVFI_Stage1 {
@@ -269,14 +277,17 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	                    };
 `endif
 	    let data_to_stage2 = Data_Stage1_to_Stage2 {priv:      cur_priv,
-						     pc:        pc,
-						     instr:     instr,
-						     op_stage2: alu_outputs.op_stage2,
-						     rd:        alu_outputs.rd,
-						     csr_valid: alu_outputs.csr_valid,
-						     addr:      alu_outputs.addr,
-						     val1:      alu_outputs.val1,
-						     val2:      alu_outputs.val2 
+						     pc:         pc,
+						     instr:      instr,
+						     op_stage2:  alu_outputs.op_stage2,
+						     rd:         alu_outputs.rd,
+						     csr_valid:  alu_outputs.csr_valid,
+`ifdef CHERI
+                             ccsr_valid: alu_outputs.ccsr_valid,
+`endif
+						     addr:       alu_outputs.addr,
+						     val1:       alu_outputs.val1,
+						     val2:       alu_outputs.val2 
 `ifdef RVFI
                             ,info_RVFI_s1: info_RVFI
 `endif
@@ -285,7 +296,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	    output_stage1.ostatus        = ostatus;
 	    output_stage1.trap_info      = trap_info;
 	    output_stage1.control        = alu_outputs.control;
+`ifdef CHERI
+        output_stage1.next_pcc       = next_pcc;
+`else
 	    output_stage1.next_pc        = next_pc;
+`endif
 	    output_stage1.data_to_stage2 = data_to_stage2;
       end
 
@@ -311,11 +326,20 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       Bool wrote_csr_minstret = False;
       if (data_to_stage2.csr_valid) begin
         CSR_Addr csr_addr = truncate (data_to_stage2.addr);
+        `ifdef CHERI
+        WordXL   csr_val  = data_to_stage2.val2.capability
+        `else
         WordXL   csr_val  = data_to_stage2.val2;
+        `endif
         csr_regfile.write_csr (csr_addr, csr_val);
         wrote_csr_minstret = ((csr_addr == csr_minstret) || (csr_addr == csr_minstreth));
         if (verbosity > 1)
             $display ("    S1: write CSR 0x%0h, val 0x%0h", csr_addr, csr_val);
+      end
+      else if (data_to_stage2.ccsr_valid) begin
+        CapCSR_Addr ccsr = truncate (data_to_stage2.addr);
+        Tagged_Capability new_val = data_to_stage2.val2;
+        csr_regfile.write_csr_cap (ccsr, new_val);
       end
    endmethod
 
@@ -330,6 +354,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    method Action set_full (Bool full);
       rg_full <= full;
    endmethod
+   
 endmodule
 
 // ================================================================
