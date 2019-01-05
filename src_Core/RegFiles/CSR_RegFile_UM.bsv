@@ -1067,6 +1067,47 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
 `endif
 
+// ================================================================
+// CHERI functions
+
+`ifdef CHERI
+   
+   method Action write_csr_cap(CapCSR_Addr cap_addr, Tagged_Capability value);
+     case (cap_addr)
+        ccsr_ddc:       DDC <= value;
+        
+        ccsr_utcc:      UTCC <= value;
+        ccsr_uscratchc: UScratchC <= value;
+        ccsr_uepcc:     UEPCC <= value;
+        
+        ccsr_stcc:      STCC <= value;
+        ccsr_sscratchc: SScratchC <= value;
+        ccsr_sepcc:     SEPCC <= value;
+        
+        ccsr_mtcc:      MTCC <= value;
+        ccsr_mscratchc: MScratchC <= value;
+        ccsr_mepcc:     MEPCC <= value;
+     endcase;
+   endmethod
+   
+   method Tagged_Capability read_csr_cap (CapCSR_Addr cap_addr);
+        return case (cap_addr)
+            ccsr_ddc:       DDC;
+            ccsr_utcc:      UTCC;
+            ccsr_uscratchc: UScratchC;
+            ccsr_uepcc:     UEPCC;
+            ccsr_stcc:      STCC;
+            ccsr_sscratchc: SScratchC;
+            ccsr_sepcc:     SEPCC;
+            ccsr_mtcc:      MTCC;
+            ccsr_mscratchc: MScratchC;
+            ccsr_mepcc:     MEPCC;
+            default:        0;
+        endcase;
+   endmethod
+   
+`endif
+
 endmodule
 
 // ================================================================
