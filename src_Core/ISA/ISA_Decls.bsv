@@ -900,15 +900,15 @@ endfunction
     
     CapCSR_Addr ccsr_utcc       = 5'd04;
     CapCSR_Addr ccsr_uscratchc  = 5'd06;
-    CapCSR_Addr ccsr_uscratchc  = 5'h07;
+    CapCSR_Addr ccsr_uepcc      = 5'h07;
     
     CapCSR_Addr ccsr_stcc       = 5'd12;
     CapCSR_Addr ccsr_sscratchc  = 5'd14;
-    CapCSR_Addr ccsr_sscratchc  = 5'd15;
+    CapCSR_Addr ccsr_sepcc      = 5'd15;
     
     CapCSR_Addr ccsr_mtcc       = 5'd28;
     CapCSR_Addr ccsr_mscratchc  = 5'd30;
-    CapCSR_Addr ccsr_mscratchc  = 5'd31;
+    CapCSR_Addr ccsr_mepcc      = 5'd31;
     
 `endif
 
