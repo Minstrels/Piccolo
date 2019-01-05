@@ -163,7 +163,11 @@ typedef struct {
    Trap_Info              trap_info;
 
    // feedback
-   WordXL                   next_pc;
+`ifdef CHERI
+   Tagged_Capability      next_pcc;
+`else
+   WordXL                 next_pc;
+`endif
 
    // feedforward data
    Data_Stage1_to_Stage2  data_to_stage2;
@@ -231,6 +235,12 @@ typedef struct {
    Op_Stage2  op_stage2;
    RegName    rd;
    Bool       csr_valid;
+`ifdef CHERI
+   Bool       ccsr_valid;
+   Tagged_Capability addr;
+   Tagged_Capability val1;
+   Tagged_Capability val2;
+`else
    Addr       addr;     // Branch, jump: newPC
                         // Mem ops and AMOs: mem addr
                         // CSRRx: csr addr
@@ -241,6 +251,7 @@ typedef struct {
    Word       val2;     // OP_Stage2_ALU: csr_val
                         // OP_Stage2_ST: store-val;
                         // OP_Stage2_M and OP_Stage2_FD: arg2
+`endif
 `ifdef RVFI
    Data_RVFI_Stage1 info_RVFI_s1;
 `endif
