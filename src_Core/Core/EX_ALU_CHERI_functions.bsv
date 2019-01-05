@@ -985,10 +985,26 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             return fv_CINSPECT_ETC (inputs);
         end
         else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin // 0x0b
-            
+            let cs = inputs.rs1_val;
+            let ct = inputs.rs2_val;
+            if(!fv_checkValid_Seal(cs, ct)) begin
+                alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            end
+            else begin
+                alu_outputs.val1 = fv_seal(cs, ct);
+            end
         end
         else if (inputs.decoded_instr.funct7 == f7_CUNSEAL) begin // 0x0c
-            
+            let cs = inputs.rs1_val;
+            let ct = inputs.rs2_val;
+            if(!fv_checkValid_Unseal(cs, ct)) begin
+                alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            end
+            else begin
+                alu_outputs.val1 = fv_unseal(cs, ct);
+            end
         end
         else if (inputs.decoded_instr.funct7 == f7_ANDPERM) begin // 0x0d
             // TODO: Where do we get the permission bits from? Still using the same perms/uperms
@@ -1158,7 +1174,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         alu_outputs.val1 = change_tagged_addr(inputs.pcc, retAddr);
         // TODO: priority of exceptions?
         alu_outputs.addr = new_pcc;
-        if (!fv_checkValid (rs1_val)) begin
+        if (!fv_checkValid_Execute (rs1_val)) begin
             alu_outputs.control = CONTROL_TRAP;
             alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
         end
@@ -1206,13 +1222,14 @@ endfunction
 
 // ----------------------------------------------------------------
 // UTILITY FUNCTIONS
+// TODO: What if 19+e > 63?
 
 function Bool fv_checkSealed(Tagged_Capability tc);
     return unpack(tc.capability[104]);
 endfunction
 
-function Bit #(6)  fv_getExp  (Tagged_Capability tc);
-    return (tc.capability[110:105]);
+function Bit #(8)  fv_getExp  (Tagged_Capability tc);
+    return ({tc.capability[110:105], 2'b00});
 endfunction
 
 function Bit #(20)  fv_getB  (Tagged_Capability tc);
@@ -1229,7 +1246,7 @@ function Bit #(20)  fv_getT  (Tagged_Capability tc);
         return tc.capability[83:64];
 endfunction
 
-function UInt #(2) fv_baseCorrection (Bit #(64) A, UInt #(20) B, UInt #(6) e);
+function UInt #(2) fv_baseCorrection (Bit #(64) A, UInt #(20) B, UInt #(8) e);
     UInt #(20) AMid = unpack(A[19+e:e]);
     UInt #(20) R = unpack(B) - unpack(1 << 12);
     Bool C1 = (AMid < R);
@@ -1242,7 +1259,7 @@ function UInt #(2) fv_baseCorrection (Bit #(64) A, UInt #(20) B, UInt #(6) e);
         return 0;
 endfunction
 
-function UInt #(2) fv_topCorrection (Bit #(64) A, UInt #(20) B, UInt #(20) T, UInt #(6) e);
+function UInt #(2) fv_topCorrection (Bit #(64) A, UInt #(20) B, UInt #(20) T, UInt #(8) e);
     UInt #(20) AMid = unpack(A[19+e:e]);
     UInt #(20) R = unpack(B) - unpack(1 << 12);
     Bool C1 = (AMid < R);
@@ -1259,7 +1276,7 @@ function Bit #(64) fv_getBase (Tagged_Capability tc);
     // As defined in 3.3.8/page 81.
     // We can calculate these here or later, the difference should be arbitrary.
     Bit  #(64) result = 64'h0000_0000_0000_0000;
-    UInt #(6)  e = unpack(fv_getExp(tc));
+    UInt #(8)  e = unpack(fv_getExp(tc));
     Bit  #(20) B = fv_getB(tc);
     result[63:20+e]  = pack(unpack(tc.capability[63:20+e]) + fv_baseCorrection(tc.capability[63:0],unpack(B),e));
     result[19+e:e] = B;
@@ -1270,7 +1287,7 @@ function Bit #(64) fv_getTop  (Tagged_Capability tc);
     // As defined in 3.3.8/page 81.
     // We can calculate these here or later, the difference should be arbitrary.
     Bit  #(64) result = 64'h0000_0000_0000_0000;
-    UInt #(6)  e = unpack(fv_getExp(tc));
+    UInt #(8)  e = unpack(fv_getExp(tc));
     Bit  #(20) T = fv_getT(tc);
     Bit  #(20) B = fv_getB(tc);
     result[63:20+e]  = pack(unpack(tc.capability[63:20+e]) + fv_topCorrection(tc.capability[63:0],unpack(B),unpack(T),e));
@@ -1280,10 +1297,7 @@ endfunction
 
 // Bool = trap status, capability = target.
 // This checks capability dereferencing issues (permissions, bounds & sealing).
-function Bool fv_checkValid (Tagged_Capability rs1);
-    Bit #(64) base   = fv_getBase(rs1);
-    Bit #(64) top    = fv_getTop (rs1);
-    Bit #(64) addr   = rs1.capability[63:0];
+function Bool fv_checkValid_Execute (Tagged_Capability rs1);
     Bit #(15) perms  = rs1.capability[127:113];
     Bool      sealed = fv_checkSealed(rs1);
     if (rs1.tag == 1'b0) // Tag violation
@@ -1292,6 +1306,15 @@ function Bool fv_checkValid (Tagged_Capability rs1);
         return False;
     if (perms[1] == 1'b0) // Permit_Execute violation
         return False;
+    if (!fv_checkRange(rs1))
+        return False;
+    return True;
+endfunction
+
+function Bool fv_checkRange (Tagged_Capability rs1);
+    Bit #(64) base   = fv_getBase(rs1);
+    Bit #(64) top    = fv_getTop (rs1);
+    Bit #(64) addr   = rs1.capability[63:0];
     if (((addr + 4) > top) || (addr < base)) // Bounds violation
         return False;
     return True;
@@ -1303,6 +1326,74 @@ function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
     Bool supr = ((addr[4:2] == 3'b011) && addr[1:0] != 2'b01);
     Bool mach = ((addr[4:2] == 3'b111) && addr[1:0] != 2'b01);
     return (base || user || supr || mach);
+endfunction
+
+function Bool fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt);
+    if (rs.tag == 0 || rt.tag == 0)                 // Tag violation
+        return False;
+    if (fv_checkSealed(rs) || fv_checkSealed(rt))   // Sealed violation
+        return False;
+    if (rt.capability[120] == 0)                    // Permit_Seal violation
+        return False;
+    if (!fv_checkRange(rt))                         // Bounds violation
+        return False;
+    if (cap_addr(rt.capability) > ffffff)           // Max_OType violation
+        return False;
+    // TODO: Is it this straightforward, or could we adjust exponent to compensate slightly?
+    if ((rs.capability[95:84] != 0) || (rs.capability[75:64] != 0)) // Bounds representation violation
+    return True;
+endfunction
+
+function Tagged_Capability fv_seal(Tagged_Capability rs, Tagged_Capability rt);
+    let rsc = rs.capability;
+    let rtc = rt.capability;
+    return Tagged_Capability {
+        tag: rs.tag,
+        capability: {   
+                      rsc[127:105], // perms, reserved, exponent
+                      1'b1,         // sealed
+                      rsc[103:96],  // bottom
+                      rtc[23:12],   // otype_high
+                      rsc[83:76],   // top
+                      rtc[11:0],    // otype_low
+                      rsc[63:0]     // cursor address
+                    }
+    };
+endfunction
+
+function Bool fv_checkValid_Unseal(Tagged_Capability rs, Tagged_Capability rt);
+    let rsc = rs.capability;
+    let rtc = rt.capability;
+    if (rs.tag == 0 || rt.tag == 0)                     // Tag violation
+        return False;
+    if ((!fv_checkSealed(rs)) || fv_checkSealed(rt))    // Sealed violation
+        return False;
+    if ({rsc[95:84], rsc[75:64]} != rtc[23:0])          // OType violation
+        return False;
+    if (rtc[122] == 0)                                  // Permit_Unseal violation
+        return False;
+    if (!fv_checkRange(rt))                             // Bounds violation
+        return False;
+endfunction
+
+function Tagged_Capability fv_unseal(Tagged_Capability rs, Tagged_Capability rt);
+    let rsc = rs.capability;
+    let rtc = rt.capability;
+    Bit #(1) global = rsc[113] & rtc[113] // Global bit set to AND of both input capabilities.
+    return Tagged_Capability {
+        tag: rs.tag,
+        capability: { 
+                      rsc[127:114], // perms 1-14
+                      global,       // global bit (perm 0)
+                      rsc[112:105], // reserved, exponent
+                      1'b0,         // sealed
+                      rsc[103:96],  // bottom
+                      12'b0,        // cleared otype_high
+                      rsc[83:76],   // top
+                      12'b0,        // cleared otype_low
+                      rsc[63:0]     // cursor address
+                    }
+    };
 endfunction
 
 // ================================================================
