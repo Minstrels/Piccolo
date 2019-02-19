@@ -56,6 +56,7 @@ typedef struct {
    Instr                instr;
    Decoded_Instr        decoded_instr;
    Bool                 cap_mode;
+   Tagged_Capability    ddc;
    Tagged_Capability    rs1_val;
    Tagged_Capability    rs2_val;
    Bool                 csr_valid;
@@ -296,8 +297,6 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
     Bool  trap          = False;
     Addr  branch_target = pack (unpack(cap_addr(inputs.pcc.capability)) + offset);
     
-    // TODO: Does capability-mode comparison compare the entire value, or just the 
-    //       address/value part as usual?
     let rs1_val = cap_addr(inputs.rs1_val.capability);
     let rs2_val = cap_addr(inputs.rs2_val.capability);
     IntXL s_rs1_val = unpack (rs1_val);
@@ -336,8 +335,8 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
             alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
         end
     end
-    // TODO: Should we check the LSB here? Need [1:0] == 0 to ensure 4-byte alignment.
-    // TODO: Confirm - we simply change the address in PCC for the branch target?
+    // TODO: Should we check the LSB here? Need [1:0] == 0 to ensure 4-byte alignment, unless using compressed instructions.
+    // TODO: Permissions and bounds checks! Probably don't require 
     trap = (trap || (branch_taken && (branch_target [1] == 1'b1)));
     Addr new_pc = branch_taken ? branch_target : (cap_addr(inputs.pcc.capability) + 4);
     alu_outputs.addr = change_tagged_addr(inputs.pcc, new_pc);
@@ -364,6 +363,7 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
    next_pc[0] = 1'b0;
 
    let alu_outputs = alu_outputs_base;
+   // TODO: capability-mode checks on permissions?
    alu_outputs.control   = ((next_pc [1] == 1'b0) ? CONTROL_BRANCH : CONTROL_TRAP);
    alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
    alu_outputs.op_stage2 = OP_Stage2_ALU;
@@ -377,7 +377,7 @@ endfunction
 // ----------------------------------------------------------------
 // JALR
 
-
+// TODO: Permissions & bounds
 function ALU_Outputs fv_JALR (ALU_Inputs inputs);
    let rs1_val = cap_addr(inputs.rs1_val.capability);
 
@@ -645,6 +645,7 @@ endfunction
 // ----------------------------------------------------------------
 // LOAD
 
+// TODO: Permissions checks
 function ALU_Outputs fv_LD (ALU_Inputs inputs);
    // Signed versions of rs1_val and rs2_val
    IntXL s_rs1_val = unpack (inputs.rs1_val);
@@ -675,6 +676,7 @@ endfunction
 // ----------------------------------------------------------------
 // STORE
 
+// TODO: Permissions checks
 function ALU_Outputs fv_ST (ALU_Inputs inputs);
    // Signed version of rs1_val
    IntXL  s_rs1_val = unpack (inputs.rs1_val);
@@ -717,6 +719,7 @@ endfunction
 // ----------------------------------------------------------------
 // System instructions
 
+// TODO: More permissions checks
 function ALU_Outputs fv_SYSTEM (ALU_Inputs inputs);
    let funct3      = inputs.decoded_instr.funct3;
    let alu_outputs = alu_outputs_base;
@@ -807,6 +810,8 @@ function ALU_Outputs fv_SYSTEM (ALU_Inputs inputs);
    end
 
    // CSRR{W,C,S} and CSRR{W,C,S}I
+   // TODO: Do we require permissions checks for existing CSRs, or only capability CSRs?
+   // TODO: Capability mode?
    else begin
       let  csr_val = inputs.csr_val;
       WordXL rs1_val = ((funct3 [2] == 1)
@@ -1046,14 +1051,40 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 };
             end
         end
+        // TODO: ALL OF THESE.
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin // 0x08
+        // TODO: Must set bounds exactly, or grant wider than requested, but cannot exceed bounds
+        //       in rs1_val - throw an exception instead?
             
         end
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin // 0x09
+        // TODO: Bounds accuracy - need top and bottom to be representable in 8 bits or fewer
+        //       at the same offset, and then we can set exponent accordingly.
             
         end
         else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin // 0x1d
+            Bit#(20) ct_B      = fv_getB(inputs.rs2_val);
+            Bit#(20) ct_T      = fv_getT(inputs.rs2_val);
+            Bit#(64) ct_bot    = fv_getBase(inputs.rs2_val);
+            Bit#(64) ct_top    = fv_getTop(inputs.rs2_val);
+            Bit#(15) ct_perms  = fv_getPerms(inputs.rs2_val);
+            Bit#(64) ct_cursor = inputs.rs2_val.capability[63:0];
+            Bit#(6)  ct_exp    = fv_getExp(inputs.rs2_val)[7:2];
             
+            Bit#(64) cb_bot   = fv_getBase(inputs.rs1_val);
+            Bit#(64) cb_top   = fv_getTop(inputs.rs1_val);
+            Bit#(15) cb_perms = fv_getPerms(inputs.rs1_val);
+            
+            // Any permissions in ct but not cb
+            Bool perms_valid = ((ct_perms & !(cb_perms)) > 0);
+            Bool bounds_valid = (ct_bot >= cb_bot && ct_top <= cb_top);
+            Bit#(1) tag = inputs.rs1_val.tag;
+            if (!perms_valid || !bounds_valid)
+                tag = 1'b0;
+            // TODO: What do we do if the conditions AREN'T met?
+            alu_outputs.val1 = Tagged_Capability {
+                    tag:        tag,
+                    capability: {ct_perms, 2'b0, ct_exp, ct_B, ct_T, ct_cursor}
         end
         else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin // 0x1e
             
@@ -1062,7 +1093,15 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             
         end
         else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin // 0x12
-            
+            // TODO: This doesn't entirely fit with the merged register file methodology.
+            if(inputs.rs1_val.tag == 1'b1)
+                alu_outputs.val1 = tc_zero;
+            else begin
+                // TODO: Signs?
+                let val_1_cursor = unpack(cap_addr(inputs.rs1_val.capability));
+                let val_2_base   = unpack(fv_getBase(inputs.rs2_val.capability));
+                alu_outputs.val1 = change_tagged_addr(tc_zero, pack(val1_cursor - val_2_base));
+            end
         end
         else if (inputs.decoded_instr.funct7 == f7_CFROMPTR) begin // 0x13
             if(inputs.rs2_val.capability[63:0] == 64'b0)
@@ -1165,7 +1204,6 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         };
     end
     else if (inputs.decoded_instr.rs2 == f5_CMOVE)      begin
-        // TODO: this is simply a straight copy, including tag?
         alu_outputs.val1 = inputs.rs1_val;
     end
     else if (inputs.decoded_instr.rs2 == f5_CJALR)      begin
@@ -1184,7 +1222,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
             alu_outputs.control = ((new_pcc.capability[1:0] == 2'b00) ? CONTROL_BRANCH : CONTROL_TRAP);
         end
     end
-    // Comments in the spec suggest check-perm/type might be removed in future.
+    // XXX: Comments in the spec suggest check-perm/type might be removed in future.
     else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
     
     end
@@ -1274,7 +1312,6 @@ endfunction
 
 function Bit #(64) fv_getBase (Tagged_Capability tc);
     // As defined in 3.3.8/page 81.
-    // We can calculate these here or later, the difference should be arbitrary.
     Bit  #(64) result = 64'h0000_0000_0000_0000;
     UInt #(8)  e = unpack(fv_getExp(tc));
     Bit  #(20) B = fv_getB(tc);
@@ -1285,7 +1322,6 @@ endfunction
 
 function Bit #(64) fv_getTop  (Tagged_Capability tc);
     // As defined in 3.3.8/page 81.
-    // We can calculate these here or later, the difference should be arbitrary.
     Bit  #(64) result = 64'h0000_0000_0000_0000;
     UInt #(8)  e = unpack(fv_getExp(tc));
     Bit  #(20) T = fv_getT(tc);
@@ -1293,6 +1329,10 @@ function Bit #(64) fv_getTop  (Tagged_Capability tc);
     result[63:20+e]  = pack(unpack(tc.capability[63:20+e]) + fv_topCorrection(tc.capability[63:0],unpack(B),unpack(T),e));
     result[19+e:e] = T;
     return result;
+endfunction
+
+function Bit #(15) fv_getPerms (Tagged_Capability tc);
+    return tc.capability[127:113];
 endfunction
 
 // Bool = trap status, capability = target.

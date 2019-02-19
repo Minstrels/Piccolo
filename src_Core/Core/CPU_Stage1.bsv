@@ -101,6 +101,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    FIFOF #(Token) f_reset_rsps <- mkFIFOF;
 
    Reg #(Bool) rg_full  <- mkReg (False);
+   
+   Reg #(Tagged_Capability) rg_ddc <- mkRegU();
 
    // ----------------------------------------------------------------
    // BEHAVIOR
@@ -117,12 +119,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
    function Output_Stage1 fv_out;
       // TODO: How are we handling memory changes? Where will PCC be derived instead of PC?
-   `ifdef CHERI
-      let pcc           = ?;
-      let pc            = pcc.capability[63:0];
-   `else
+      // TODO: Discuss this. We could pass PCC capability bits all the way out to the icache and back, but is there a better way to do it?
       let pc            = icache.pc;
-   `endif
+      // TODO: PCC is read-only except for internal manipulation. Are there any cases where we change permissions or bounds on PCC?
+      //       If not, we can simply keep upper bits of PCC as a static value (at compile time?) and then only need to pass the standard 
+      //       program counter in cache interactions.
       let instr         = icache.instr;
       let decoded_instr = fv_decode (instr);
       let funct3        = decoded_instr.funct3;
@@ -177,14 +178,17 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 		       && (! csr_write_fault));
 
         let csr_val   = fromMaybe (?, m_csr_val);
-        let ccsr_val  = (rs2 == 0) ? pcc : csr_regfile.read_csr_cap(rs2));
+        let ccsr_val  = (rs2 == 0) ? pcc :
+                        (rs2 == 1) ? ddc :
+                        csr_regfile.read_csr_cap(rs2));
 
         // ALU function
-        // TODO: PCC vs PC?
+        // TODO: Derive DDC value correctly.
         let alu_inputs = ALU_Inputs {
                    cur_priv:       cur_priv,
                    `ifdef CHERI
                    pcc:            pcc,
+                   ddc:            rg_ddc,
                    `else
 				   pc:             pc,
                    `endif
@@ -298,9 +302,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	    output_stage1.control        = alu_outputs.control;
 `ifdef CHERI
         output_stage1.next_pcc       = next_pcc;
-`else
-	    output_stage1.next_pc        = next_pc;
 `endif
+	    output_stage1.next_pc        = next_pc;
 	    output_stage1.data_to_stage2 = data_to_stage2;
       end
 
@@ -339,7 +342,12 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       else if (data_to_stage2.ccsr_valid) begin
         CapCSR_Addr ccsr = truncate (data_to_stage2.addr);
         Tagged_Capability new_val = data_to_stage2.val2;
-        csr_regfile.write_csr_cap (ccsr, new_val);
+        if (ccsr == ccsr_ddc )begin
+            rg_ddc <= new_val;
+        end
+        else begin
+            dcsr_regfile.write_csr_cap (ccsr, new_val);
+        end
       end
    endmethod
 

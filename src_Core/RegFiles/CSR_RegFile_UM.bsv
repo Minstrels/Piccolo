@@ -251,7 +251,9 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    //       Piccolo's standard PC is implicit in function calls.
 
    // Reg #(Tagged_Capability) PCC         <- mkRegU;
-   Reg #(Tagged_Capability) DDC         <- mkRegU;
+   // XXX: DDC is needed frequently, so cut down on transfers
+   //      by storing it elsewhere
+   // Reg #(Tagged_Capability) DDC         <- mkRegU;
 
    Reg #(Tagged_Capability) UTCC        <- mkRegU;
    Reg #(Tagged_Capability) UScratchC   <- mkRegU;

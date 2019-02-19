@@ -656,6 +656,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       if ((! halting)
 	  && (! stage1_full))
 	 begin
+	    // TODO: Do we need to stall for any capability CSRs? 
 	    if (stage1_is_csrrx) begin
 	       // Delay for a clock if Stage1 is CSRRx, since fa_start_ifetch reads some
 	       // CSRs, which may be stale w.r.t. CSRRx
