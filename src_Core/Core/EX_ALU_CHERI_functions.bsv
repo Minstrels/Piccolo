@@ -980,7 +980,12 @@ endfunction
 function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let alu_outputs = alu_outputs_base;
     if (inputs.decoded_instr.funct3 == 3'b001) begin // CIncOffsetImmediate
-        
+        if (inputs.rs1_val.tag == 1'b1 && fv_checkSealed(inputs.rs1_val)) begin
+            alu_outputs.control = CONTROL_TRAP;
+            alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+        end
+        Bit#(64) newCursor = cap_addr(inputs.rs1_val) + zeroExtend(inputs.decoded_instr.imm12_I);
+        alu_outputs.val1 = change_tagged_addr(inputs.rs1_val, newCursor);
     end
     else if (inputs.decoded_instr.funct3 == 3'b010) begin // CSetBoundsImmediate
         
@@ -1026,6 +1031,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 };
             end
         end
+        // TODO: These are setting the CURSOR, not the OFFSET.
         else if (inputs.decoded_instr.funct7 == f7_SETOFFSET) begin // 0x0f
             if (fv_checkSealed(inputs.rs1_val) && (inputs.rs1_val.tag == 1'b1)) begin
                 alu_outputs.control  = CONTROL_TRAP;
@@ -1053,9 +1059,13 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         end
         // TODO: ALL OF THESE.
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin // 0x08
+<<<<<<< HEAD
         // TODO: Must set bounds exactly, or grant wider than requested, but cannot exceed bounds
         //       in rs1_val - throw an exception instead?
             
+=======
+
+>>>>>>> 397546fc2c16d8d4f014d23a7a19893d37d13571
         end
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin // 0x09
         // TODO: Bounds accuracy - need top and bottom to be representable in 8 bits or fewer
@@ -1087,20 +1097,41 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                     capability: {ct_perms, 2'b0, ct_exp, ct_B, ct_T, ct_cursor}
         end
         else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin // 0x1e
-            
+            // TODO: This surely has a different definition in RISC-V?
+            //       Setting Base and Offset fields to -1 doesn't make sense when
+            //       one is condensed and the other doesn't exist.
         end
         else if (inputs.decoded_instr.funct7 == f7_CCSEAL) begin // 0x1f
-            
-        end
-        else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin // 0x12
-            // TODO: This doesn't entirely fit with the merged register file methodology.
-            if(inputs.rs1_val.tag == 1'b1)
-                alu_outputs.val1 = tc_zero;
+            let cs_val = inputs.rs1_val;
+            let ct_val = inputs.rs2_val;
+            if (cs_val.tag == 1'b0) begin
+                alu_outputs.control  = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            end
+            // TODO: Will unpack get this right?
+            else if (ct_val.tag == 1'b0 || unpack(cap_addr(ct_val)) == -1) begin
+                alu_outputs.val1 = cs_val;
+            end
+            else if (!fv_checkValid_Seal(cs_val, ct_val)) begin
+                alu_outputs.control  = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            end
             else begin
-                // TODO: Signs?
-                let val_1_cursor = unpack(cap_addr(inputs.rs1_val.capability));
-                let val_2_base   = unpack(fv_getBase(inputs.rs2_val.capability));
-                alu_outputs.val1 = change_tagged_addr(tc_zero, pack(val1_cursor - val_2_base));
+                // TODO: Any further checking needed?
+                alu_outputs.val1 = fv_seal(cs_val, ct_val);
+            end
+        end
+        // XXX: This instruction doesn't exactly match the merged register file mentality.
+        else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin // 0x12
+            if (inputs.rs1_val.tag == 1'b0) begin
+            // TODO: Description says set rd to 0, pseudocode says throw an exception.
+                alu_outputs.val1 = tc_zero;
+            end
+            else begin
+                let cs_base = fv_getBase(inputs.rs2_val);
+                let cb_addr = cap_addr(inputs.rs1_val);
+                // TODO: Any handling of negative values?
+                alu_outputs.val1 = change_tagged_addr(tc_zero, cb_addr - cs_base);
             end
         end
         else if (inputs.decoded_instr.funct7 == f7_CFROMPTR) begin // 0x13
