@@ -346,7 +346,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
             rg_ddc <= new_val;
         end
         else begin
-            dcsr_regfile.write_csr_cap (ccsr, new_val);
+            csr_regfile.write_csr_cap (ccsr, new_val);
         end
       end
    endmethod
