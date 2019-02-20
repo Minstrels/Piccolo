@@ -1059,13 +1059,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         end
         // TODO: ALL OF THESE.
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin // 0x08
-<<<<<<< HEAD
-        // TODO: Must set bounds exactly, or grant wider than requested, but cannot exceed bounds
-        //       in rs1_val - throw an exception instead?
-            
-=======
-
->>>>>>> 397546fc2c16d8d4f014d23a7a19893d37d13571
+        
         end
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin // 0x09
         // TODO: Bounds accuracy - need top and bottom to be representable in 8 bits or fewer
@@ -1168,7 +1162,24 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             
         end
         else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin // 0x00
-            
+            Bit#(5) op_spec = inputs.decoded_instr.rs2);
+            // TODO
+            Tagged_Capability controller = (op_spec[4] == 1'b1) ? inputs.rs1_val : tc_zero;
+            alu_outputs.val2 = inputs.rs1_val;
+            if(!fv_checkMemoryTarget(inputs.rs1_val) begin
+                alu_outputs.control  = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            end
+            else if (fv_isLoad(op_spec)) begin
+                alu_outputs.op_stage2 = OP_Stage2_LD;
+            end
+            else if (fv_isStore(op_spec)) begin
+                alu_outputs.op_stage2 = OP_Stage2_ST;
+            end
+            else begin
+                alu_outputs.control  = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
+            end
         end
         else begin
             alu_outputs.control = CONTROL_TRAP;
@@ -1286,12 +1297,41 @@ endfunction
 // Pass through to memory stage? What details do we need?
 
 function ALU_Outputs fv_CHERILOAD (ALU_Inputs inputs);
-   match { .trap, .addrval } = fv_getCheckAndTarget (rs1_val, pcc);
+    let checked_val = fv_checkMemoryTarget();
+    if (!checked_val) begin
+        alu_outputs.control = CONTROL_TRAP;
+        alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+    end
 endfunction
 
 // ----------------------------------------------------------------
 // UTILITY FUNCTIONS
 // TODO: What if 19+e > 63?
+
+function Bool fv_checkMemoryTarget(Tagged_Capability tc, Bit#(5) spec);
+    Capability cpv = tc.capacility;
+    if (tc.tag == 1'b0)     // Tag not set
+        return False;
+    else if (fv_checkSealed(tc)) // Capability sealed
+        return False;
+    else if (fv_isLoad(spec) && cpv[116] == 1'b0) // No load permission
+        return False;
+    else if (!fv_isLoad(spec) && cpv[117] == 1'b0) // No store permission
+        // Strictly speaking there are holes in the encoding but these will
+        // cause other errors so we don't check them here.
+        return False;
+    else if (!fv_checkRange(tc))
+        return False;
+    return True; 
+endfunction
+
+function Bool fv_isLoad(Bit #(5) func5);
+    return (func5[3] == 1'b0) || (func5[2:0] == 3'b101)
+endfunction
+
+function Bool fv_isStore(Bit #(5) func5);
+    return !(func5[3] == 1'b0 || (func5[2] == 1'b1 && func5[1:0] > 2'b00))
+endfunction
 
 function Bool fv_checkSealed(Tagged_Capability tc);
     return unpack(tc.capability[104]);
@@ -1382,6 +1422,8 @@ function Bool fv_checkValid_Execute (Tagged_Capability rs1);
     return True;
 endfunction
 
+
+// TODO: Change this for the 2^e alignment requirement.
 function Bool fv_checkRange (Tagged_Capability rs1);
     Bit #(64) base   = fv_getBase(rs1);
     Bit #(64) top    = fv_getTop (rs1);
