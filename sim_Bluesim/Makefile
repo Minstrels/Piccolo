@@ -150,6 +150,20 @@ BSC_FLAGSGDB += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D Near_Mem_Caches \
 		-D FABRIC64 \
 		+RTS -K64M -RTS  -show-range-conflict
+		
+BSC_CHERIFLAGS += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
+		-suppress-warnings G0020 \
+		-D RV64 \
+		-D FABRIC64 \
+		-D SV39 \
+		-D ISA_PRIV_M \
+		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
+		-D Near_Mem_Caches \
+		-D SHIFT_BARREL \
+		-D CSR_REGFILE_UM \
+		-D CHERI \
+		+RTS -K64M -RTS  -show-range-conflict
 
 # ================================================================
 # Make targets
@@ -167,6 +181,8 @@ TMP_LOGIF = -bdir bv64 -simdir bv64 -info-dir bv64 -vdir bv64
 
 TMP_GDBV = -bdir gdbv -simdir gdbv -info-dir gdbv -vdir gdbv
 TMP_GDB = -bdir gdb -simdir gdb -info-dir gdb -vdir gdb
+
+TMP_CHERI = -bdir cherib -simdir cherib -info-dir cherib -vdir cherib
 
 .PHONY: sim32
 sim32:
@@ -275,6 +291,13 @@ bD64:
 	mkdir -p gdbv
 	bsc -u -elab -verilog $(USEFUL_FLAGS) $(TMP_GDBV) $(BSC_FLAGSGDB) $(BSC_PATH) ../src_Core/Core/CPU.bsv
 	@echo "INFO: Compilation completed"
+	
+.PHONY: cheri
+cheri:
+	@echo "INFO: Compiling CHERI..."
+	mkdir -p cherib
+	bsc -u -elab -verilog $(USEFUL_FLAGS) $(TMP_CHERI) $(BSC_CHERIFLAGS) $(BSC_PATH) ../src_Core/Core/CPU.bsv
+	@echo "INFO: Compilation completed"
 
 
 BSIM_EXE_FILE = exe_HW_bsim
@@ -282,6 +305,7 @@ BSIM_EXE_FILE64 = exe_HW_bsim64
 BSIM_EXE_FV64 = exe_HW_vs64
 BSIM_EXE_FV32 = exe_HW_vs32
 BSIM_EXE_FILEGDB = exe_GDB
+BSIM_EXE_CHERI = exe_CHERI
 
 BSC_C_FLAGS += \
 	-Xc++  -D_GLIBCXX_USE_CXX11_ABI=0 \
