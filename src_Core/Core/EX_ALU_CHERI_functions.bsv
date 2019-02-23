@@ -1279,14 +1279,16 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         alu_outputs.control = CONTROL_CLEAR;
         alu_outputs.val1 = change_tagged_addr(tc_zero, extend(inputs.instr[19:18]));
         alu_outputs.val2 = change_tagged_addr(tc_zero, extend({inputs.instr[17:15], inputs.instr[11:7]}));
-        alu_outputs.addr = change_tagged_addr(tc_zero, 64'h0);
+        alu_outputs.addr = tc_zero;
     end
+    `ifdef ISA_FD
     else if (inputs.decoded_instr.rs2 == f5_FPCLEAR)    begin
         alu_outputs.control = CONTROL_CLEAR;
         alu_outputs.val1 = change_tagged_addr(tc_zero, extend(inputs.instr[19:18]));
         alu_outputs.val2 = change_tagged_addr(tc_zero, extend({inputs.instr[17:15], inputs.instr[11:7]}));
         alu_outputs.addr = change_tagged_addr(tc_zero, 64'h1);
     end
+    `endif
     else begin
         alu_outputs.control = CONTROL_TRAP;
     end
