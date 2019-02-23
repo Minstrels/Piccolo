@@ -330,14 +330,29 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    method Output_Stage1 out;
       return fv_out;
    endmethod
-
+   
    method Action deq ();
       let data_to_stage2 = fv_out.data_to_stage2;
-      // Writeback CSR if valid
-
-      // TODO: do we suppress MINSTRET increment if we write minstret here?
       Bool wrote_csr_minstret = False;
-      if (data_to_stage2.csr_valid) begin
+      if (fv_out.control == CONTROL_CLEAR) begin
+         // If we don't have FP support, don't worry about checking it.
+         `ifdef ISA_F
+         if (data_to_stage2.addr.capability[0] == 1'b0) begin
+         `endif
+            gpr_regfile.clear_quarter(
+                    data_to_stage2.val1.capability[1:0],
+                    data_to_stage2.val2.capability[7:0]);
+         `ifdef ISA_F
+         end
+         else begin
+            fpr_regfile.clear_quarter(
+                    data_to_stage2.val1.capability[1:0],
+                    data_to_stage2.val2.capability[7:0]);
+         end
+         `endif
+      end
+      // TODO: do we suppress MINSTRET increment if we write minstret here?
+      else if (data_to_stage2.csr_valid) begin
         CSR_Addr csr_addr = truncate (data_to_stage2.addr);
         `ifdef CHERI
         WordXL   csr_val  = data_to_stage2.val2.capability
