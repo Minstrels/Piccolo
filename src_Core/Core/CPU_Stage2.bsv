@@ -471,8 +471,13 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_A
 			amo_funct7,
 `endif
+`ifdef CHERI
+			tagged_addr(x.addr),
+            tagged_addr(x.val2),
+`else
 			x.addr,
 			zeroExtend (x.val2),
+`endif
 			mem_priv,
 			sstatus_SUM,
 			mstatus_MXR,
