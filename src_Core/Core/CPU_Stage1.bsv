@@ -269,16 +269,26 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	                        instr:          instr,
 	                        rs1_addr:       rs1,
 	                        rs2_addr:       rs2,
-	                        rs1_data:       rs1_val_bypassed,
-	                        rs2_data:       rs2_val_bypassed,
-	                        pc_rdata:       pc,
-	                        pc_wdata:       next_pc,
-	                        mem_wdata:      alu_outputs.val2,
 	                        rd_addr:        alu_outputs.rd,
 	                        rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
+	                        pc_rdata:       pc,
+                            `ifdef CHERI
+	                        rs1_data:       tagged_addr(rs1_val_bypassed),
+	                        rs2_data:       tagged_addr(rs2_val_bypassed),
+	                        pc_wdata:       tagged_addr(next_pc),
+	                        mem_wdata:      tagged_addr(alu_outputs.val2),
+	                        rd_wdata_alu:   tagged_addr(alu_outputs.val1),
+	                        mem_addr:       ((alu_outputs.op_stage2 == OP_Stage2_LD) || (alu_outputs.op_stage2 == OP_Stage2_ST))
+                                                ? tagged_addr(alu_outputs.addr) : 0
+                            `else
+	                        rs1_data:       rs1_val_bypassed,
+	                        rs2_data:       rs2_val_bypassed,
+	                        pc_wdata:       next_pc,
+	                        mem_wdata:      alu_outputs.val2,
 	                        rd_wdata_alu:   alu_outputs.val1,
 	                        mem_addr:       ((alu_outputs.op_stage2 == OP_Stage2_LD) || (alu_outputs.op_stage2 == OP_Stage2_ST)) ? alu_outputs.addr : 0
-	                    };
+                            `endif
+                        };
 `endif
 	    let data_to_stage2 = Data_Stage1_to_Stage2 {priv:      cur_priv,
 						     pc:         pc,
