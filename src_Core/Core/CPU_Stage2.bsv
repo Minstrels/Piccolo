@@ -487,21 +487,39 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef SHIFT_SERIAL
 	 // If Shifter box op, initiate it
 	 else if (x.op_stage2 == OP_Stage2_SH)
-	    shifter_box.req (unpack (funct3 [2]), x.val1, x.val2);
+	    shifter_box.req (unpack (funct3 [2]),
+        `ifdef CHERI
+            tagged_addr(x.val1), tagged_addr(x.val2)
+        `else
+            x.val1, x.val2
+        `endif
+        );
 `endif
 
 `ifdef ISA_M
 	 // If MBox op, initiate it
 	 else if (x.op_stage2 == OP_Stage2_M) begin
 	    Bool is_OP_not_OP_32 = (x.instr [3] == 1'b0);
-	    mbox.req (is_OP_not_OP_32, funct3, x.val1, x.val2);
+	    mbox.req (is_OP_not_OP_32, funct3, 
+        `ifdef CHERI
+            tagged_addr(x.val1), tagged_addr(x.val2)
+        `else
+            x.val1, x.val2
+        `endif
+        );
 	 end
 `endif
 
 `ifdef ISA_FD
 	 // If FBox op, initiate it
 	 else if (x.op_stage2 == OP_Stage2_FD)
-	    fbox.req (funct3, x.val1, x.val2);
+	    fbox.req (funct3,
+        `ifdef CHERI
+            tagged_addr(x.val1), tagged_addr(x.val2)
+        `else
+            x.val1, x.val2
+        `endif
+        );
 `endif
       endaction
    endfunction
