@@ -202,10 +202,13 @@ function Capability fv_assemble_cap (Capability_Struct cap_s);
     return base;
 endfunction
 
-function Bit #(15) cap_uperms (Capability x); return x [127:113];       endfunction
-function Bit #(15) cap_exp    (Capability x); return x [110:105];       endfunction
-function Bool      cap_sealed (Capability x); return unpack(x[104]);    endfunction
-function Bit #(64) cap_addr   (Capability x); return x [63:0];          endfunction
+function Bit #(15) cap_uperms  (Capability x); return x [127:113];       endfunction
+function Bit #(15) cap_exp     (Capability x); return x [110:105];       endfunction
+function Bool      cap_sealed  (Capability x); return unpack(x[104]);    endfunction
+function Bit #(64) cap_addr    (Capability x); return x [63:0];          endfunction
+function Bit #(64) tagged_addr (Tagged_Capability x); 
+    return cap_addr(x.capability); 
+endfunction
 
 function Bit #(15) cap_bottom    (Capability x); 
     return cap_sealed(x) ? {x[103:96], 12'b0} : x[103:84];
