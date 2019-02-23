@@ -163,11 +163,11 @@ typedef struct {
    Trap_Info              trap_info;
 
    // feedback
+   // TODO: We only need one of these, but it requires restructuring work!
 `ifdef CHERI
    Tagged_Capability      next_pcc;
-`else
-   WordXL                 next_pc;
 `endif
+   WordXL                 next_pc;
 
    // feedforward data
    Data_Stage1_to_Stage2  data_to_stage2;
