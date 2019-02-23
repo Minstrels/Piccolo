@@ -1158,15 +1158,15 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             alu_outputs.val1 = ccsr_val;
             alu_outputs.val2 = inputs.rs1_val;
         end
-        else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
+        //else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
             
-        end
+        //end
         else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin // 0x00
             Bit#(5) op_spec = inputs.decoded_instr.rs2);
-            // TODO
-            Tagged_Capability controller = (op_spec[4] == 1'b1) ? inputs.rs1_val : tc_zero;
-            alu_outputs.val2 = inputs.rs1_val;
-            if(!fv_checkMemoryTarget(inputs.rs1_val) begin
+            Tagged_Capability controller = (op_spec[4] == 1'b1) ? inputs.rs1_val : ddc;
+            alu_outputs.addr = controller;
+			alu_outputs.val2 = inputs.rs1_val;
+            if(!fv_checkMemoryTarget(controller) begin
                 alu_outputs.control  = CONTROL_TRAP;
                 alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
             end
@@ -1265,12 +1265,12 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         end
     end
     // XXX: Comments in the spec suggest check-perm/type might be removed in future.
-    else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
+    //else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
     
-    end
-    else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
+    //end
+    //else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
         
-    end
+    //end
     // As these intructions won't write back to registers like most do, it makes sense
     // to use a new CONTROL type.
     // As for ALU output values, we'll set val1[1:0] = quadrant, val2[7:0] = mask, and addr[0] = GP/FP
@@ -1337,8 +1337,13 @@ function Bool fv_checkSealed(Tagged_Capability tc);
     return unpack(tc.capability[104]);
 endfunction
 
-function Bit #(8)  fv_getExp  (Tagged_Capability tc);
-    return ({tc.capability[110:105], 2'b00});
+//function Bit #(8)  fv_getExp  (Tagged_Capability tc);
+//    return ({tc.capability[110:105], 2'b00});
+//endfunction
+
+// TODO: Check if 
+function Bit #(6)  fv_getExp  (Tagged_Capability tc);
+    return tc.capability[110:105];
 endfunction
 
 function Bit #(20)  fv_getB  (Tagged_Capability tc);
@@ -1425,12 +1430,11 @@ endfunction
 
 // TODO: Change this for the 2^e alignment requirement.
 function Bool fv_checkRange (Tagged_Capability rs1);
-    Bit #(64) base   = fv_getBase(rs1);
-    Bit #(64) top    = fv_getTop (rs1);
-    Bit #(64) addr   = rs1.capability[63:0];
-    if (((addr + 4) > top) || (addr < base)) // Bounds violation
-        return False;
-    return True;
+	let exp = unpack(fv_getExp(rs1));
+    let val = (rs1.capability[63:0] >> exp);
+    // If it's less we're in the container below, if it's greater 
+    // we're in the one above.
+    return (val == fv_getB(rs1));
 endfunction
 
 function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
@@ -1452,7 +1456,6 @@ function Bool fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt);
         return False;
     if (cap_addr(rt.capability) > ffffff)           // Max_OType violation
         return False;
-    // TODO: Is it this straightforward, or could we adjust exponent to compensate slightly?
     if ((rs.capability[95:84] != 0) || (rs.capability[75:64] != 0)) // Bounds representation violation
     return True;
 endfunction
