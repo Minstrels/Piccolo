@@ -62,7 +62,7 @@ interface GPR_RegFile_IFC;
    (* always_ready *)
    method Action write_rd_int (RegName rd, WordXL rd_val);
    (* always_ready *)
-   method Action clear_quarter (Bit #(2) QID, Bit #(8) Mask);
+   method Action clear_quarter (Bit #(2) qid, Bit #(8) mask);
 `else
    // GPR read
    (* always_ready *)
@@ -113,20 +113,6 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
 `endif
 
    // ----------------------------------------------------------------
-   // CHERI-RISC-V Fast-clearing instructions
-   // This loop clears a subset of the registers (up to 1/8 of the file)
-   
-`ifdef CHERI
-   rule rl_fastclear (rg_state == RF_CLEARING);
-      if (rg_mask[rg_sub] == 1)
-         regfile.upd ({rg_base, rg_sub}, tc_zero);
-      if (rg_sub == 7)
-         rg_state <= RF_RUNNING;
-      rg_sub <= rg_sub + 1;
-   endrule
-`endif
-
-   // ----------------------------------------------------------------
    // Reset.
    // This loop initializes all GPRs to 0.
    // The RISC-V spec does not require this, but it's useful for debugging
@@ -155,7 +141,7 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
             rg_state <= RF_RUNNING;
 `elsif RVFI
     `ifdef CHERI
-        regfile.upd (rg_j, tc_default);
+        regfile.upd (rg_j, tc_zero);
         rg_j <= rg_j + 1;
         if (rg_j == 31)
             rg_state <= RF_RUNNING;
@@ -169,6 +155,20 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
       rg_state <= RF_RUNNING;
 `endif
    endrule
+   
+      // ----------------------------------------------------------------
+   // CHERI-RISC-V Fast-clearing instructions
+   // This loop clears a subset of the registers (up to 1/8 of the file)
+   
+`ifdef CHERI
+   rule rl_fastclear (rg_state == RF_CLEARING);
+      if (rg_mask[rg_sub] == 1)
+         regfile.upd ({rg_base, rg_sub}, tc_zero);
+      if (rg_sub == 7)
+         rg_state <= RF_RUNNING;
+      rg_sub <= rg_sub + 1;
+   endrule
+`endif
 
    // ----------------------------------------------------------------
    // INTERFACE
@@ -195,15 +195,15 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
    // GPR read
 `ifdef CHERI
    method Tagged_Capability read_rs1 (RegName rs1);
-      return ((rs1 == 0) ? 0 : regfile.sub (rs1));
+      return ((rs1 == 0) ? tc_zero : regfile.sub (rs1));
    endmethod
 
    method Tagged_Capability read_rs1_port2 (RegName rs1);
-      return ((rs1 == 0) ? 0 : regfile.sub (rs1));
+      return ((rs1 == 0) ? tc_zero : regfile.sub (rs1));
    endmethod
 
    method Tagged_Capability read_rs2 (RegName rs2);
-      return ((rs2 == 0) ? 0 : regfile.sub (rs2));
+      return ((rs2 == 0) ? tc_zero : regfile.sub (rs2));
    endmethod
 `else
    method Word read_rs1 (RegName rs1);
@@ -223,18 +223,18 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
 `ifdef CHERI
 
    // Write the register given a full capability.
-   method Action write_rd_cap (RegName rd, Tagged_Capability rd_val);
+   method Action write_rd (RegName rd, Tagged_Capability rd_val);
       if (rd != 0) regfile.upd (rd, rd_val);
    endmethod
    
    // Write the register with only a 64-bit value available.
-   method Action write_rd (RegName rd, WordXL rd_val);
-      if (rd != 0) regfile.upd(rd, Tagged_Capability { tag: 0, capability: {64'h0, rd_val} );
+   method Action write_rd_int (RegName rd, WordXL rd_val);
+      if (rd != 0) regfile.upd(rd, Tagged_Capability { tag: 0, capability: {64'h0, rd_val}} );
    endmethod
    
-   method Action clear_quarter (Bit #(2) QID, Bit #(8) Mask);
-      rg_base  <= QID;
-      rg_mask  <= Mask;
+   method Action clear_quarter (Bit #(2) qid, Bit #(8) mask);
+      rg_base  <= qid;
+      rg_mask  <= mask;
       rg_sub   <= 3'b000;
       rg_state <= RF_CLEARING;
    endmethod

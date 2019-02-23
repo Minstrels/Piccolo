@@ -124,6 +124,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       // TODO: PCC is read-only except for internal manipulation. Are there any cases where we change permissions or bounds on PCC?
       //       If not, we can simply keep upper bits of PCC as a static value (at compile time?) and then only need to pass the standard 
       //       program counter in cache interactions.
+      let pcc = change_tagged_addr(tc_pcc_vals, pc);
+      
       let instr         = icache.instr;
       let decoded_instr = fv_decode (instr);
       let funct3        = decoded_instr.funct3;
@@ -136,7 +138,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       match { .busy1b, .rs1b } = fn_gpr_bypass (bypass_from_stage2, rs1, rs1a);
       Bool rs1_busy = (busy1a || busy1b);
       `ifdef CHERI
-      Tagged_Capability rs1_val_bypassed = ((rs1 == 0) ? 0 : rs1b);
+      Tagged_Capability rs1_val_bypassed = ((rs1 == 0) ? tc_zero : rs1b);
       `else
       Word rs1_val_bypassed = ((rs1 == 0) ? 0 : rs1b);
       `endif
@@ -148,7 +150,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       match { .busy2b, .rs2b } = fn_gpr_bypass (bypass_from_stage2, rs2, rs2a);
       Bool rs2_busy = (busy2a || busy2b);
       `ifdef CHERI
-      Tagged_Capability rs2_val_bypassed = ((rs2 == 0) ? 0 : rs2b);
+      Tagged_Capability rs2_val_bypassed = ((rs2 == 0) ? tc_zero : rs2b);
       `else
       Word rs2_val_bypassed = ((rs2 == 0) ? 0 : rs2b);
       `endif
@@ -178,9 +180,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 		       && (! csr_write_fault));
 
         let csr_val   = fromMaybe (?, m_csr_val);
+`ifdef CHERI
         let ccsr_val  = (rs2 == 0) ? pcc :
-                        (rs2 == 1) ? ddc :
-                        csr_regfile.read_csr_cap(rs2));
+                        (rs2 == 1) ? rg_ddc :
+                        csr_regfile.read_csr_cap(rs2);
+`endif
 
         // ALU function
         // TODO: Derive DDC value correctly.
@@ -252,18 +256,18 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 			: OSTATUS_NONPIPE);
 
 	 // TODO: change name 'badaddr' to 'tval'
-	    let badaddr = 0;
+	    let badaddr = 64'b0;
 	    if (alu_outputs.exc_code == exc_code_ILLEGAL_INSTRUCTION)
 	        badaddr = zeroExtend (instr);
 	    else if (alu_outputs.exc_code == exc_code_INSTR_ADDR_MISALIGNED)
-	        badaddr = alu_outputs.addr;    // branch target pc
+	        badaddr = tagged_addr(alu_outputs.addr);    // branch target pc
 	    let trap_info = Trap_Info {epc:      pc,
 				    exc_code: alu_outputs.exc_code,
 				    badaddr:  badaddr};  // v1.10 - mtval
 `ifdef CHERI
         let next_pcc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : change_tagged_addr(pcc,pc+4));
 `endif
-	    let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : pc + 4);
+	    let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? tagged_addr(alu_outputs.addr) : pc + 4);
 `ifdef RVFI
 	    let info_RVFI = Data_RVFI_Stage1 {
 	                        instr:          instr,
@@ -275,7 +279,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
                             `ifdef CHERI
 	                        rs1_data:       tagged_addr(rs1_val_bypassed),
 	                        rs2_data:       tagged_addr(rs2_val_bypassed),
-	                        pc_wdata:       tagged_addr(next_pc),
+	                        pc_wdata:       tagged_addr(next_pcc),
 	                        mem_wdata:      tagged_addr(alu_outputs.val2),
 	                        rd_wdata_alu:   tagged_addr(alu_outputs.val1),
 	                        mem_addr:       ((alu_outputs.op_stage2 == OP_Stage2_LD) || (alu_outputs.op_stage2 == OP_Stage2_ST))
@@ -353,10 +357,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       end
       // TODO: do we suppress MINSTRET increment if we write minstret here?
       else if (data_to_stage2.csr_valid) begin
-        CSR_Addr csr_addr = truncate (data_to_stage2.addr);
         `ifdef CHERI
-        WordXL   csr_val  = data_to_stage2.val2.capability
+        CSR_Addr csr_addr = truncate (tagged_addr(data_to_stage2.addr));
+        WordXL   csr_val  = tagged_addr(data_to_stage2.val2);
         `else
+        CSR_Addr csr_addr = truncate (data_to_stage2.addr);
         WordXL   csr_val  = data_to_stage2.val2;
         `endif
         csr_regfile.write_csr (csr_addr, csr_val);
@@ -364,8 +369,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
         if (verbosity > 1)
             $display ("    S1: write CSR 0x%0h, val 0x%0h", csr_addr, csr_val);
       end
+      `ifdef CHERI
       else if (data_to_stage2.ccsr_valid) begin
-        CapCSR_Addr ccsr = truncate (data_to_stage2.addr);
+        CapCSR_Addr ccsr = truncate (tagged_addr(data_to_stage2.addr));
         Tagged_Capability new_val = data_to_stage2.val2;
         if (ccsr == ccsr_ddc )begin
             rg_ddc <= new_val;
@@ -374,6 +380,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
             csr_regfile.write_csr_cap (ccsr, new_val);
         end
       end
+      `endif
    endmethod
 
    // ---- Input

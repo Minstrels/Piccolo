@@ -117,9 +117,15 @@ function Tuple2 #(Bool, Tagged_Capability) fn_gpr_bypass (Bypass bypass, RegName
 function Tuple2 #(Bool, Word) fn_gpr_bypass (Bypass bypass, RegName rd, Word rd_val);
 `endif
    Bool busy = ((bypass.bypass_state == BYPASS_RD) && (bypass.rd == rd));
+`ifdef CHERI
+   Tagged_Capability val  = (  ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
+		? bypass.rd_val
+		: rd_val);
+`else
    Word val  = (  ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
 		? bypass.rd_val
 		: rd_val);
+`endif
    return tuple2 (busy, val);
 endfunction
 
@@ -345,11 +351,17 @@ typedef struct {
 
    Bool      rd_valid;
    RegName   rd;
-   Word      rd_val;
 
    Bool      csr_valid;
    CSR_Addr  csr;
+   
+`ifdef CHERI
+   Tagged_Capability      rd_val;
+   Tagged_Capability      csr_val;
+`else
+   Word      rd_val;
    Word      csr_val;
+`endif
    
 `ifdef RVFI
    Data_RVFI_Stage2 info_RVFI_s2;

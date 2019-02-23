@@ -164,7 +164,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 						    rd:        rg_stage2.rd,
 						    rd_val:    rg_stage2.val1,
 						    csr_valid: rg_stage2.csr_valid,
+`ifdef CHERI
+						    csr:       truncate (tagged_addr(rg_stage2.addr)),
+`else
 						    csr:       truncate (rg_stage2.addr),
+`endif
 						    csr_val:   rg_stage2.val2
 `ifdef RVFI
 						    ,info_RVFI_s2: info_RVFI_s2_base
@@ -173,7 +177,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
    let  trap_info_dmem = Trap_Info {epc:      rg_stage2.pc,
 				    exc_code: dcache.exc_code,
-				    badaddr:  rg_stage2.addr };
+				    badaddr:  tagged_addr(rg_stage2.addr) };
 
 `ifdef ISA_FD
    let  trap_info_fbox = Trap_Info {epc:      rg_stage2.pc,
@@ -246,12 +250,12 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	    let data_to_stage3 = data_to_stage3_base;
 	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
-	    data_to_stage3.rd_val   = result;
+	    data_to_stage3.rd_val   = change_tagged_addr(tc_zero, result);
 
 	    let bypass = bypass_base;
 	    if (rg_stage2.rd != 0) begin    // TODO: is this test necessary?
 	       bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
-	       bypass.rd_val       = result;
+	       bypass.rd_val       = change_tagged_addr(tc_zero, result);
 	    end
 
 `ifdef INCLUDE_TANDEM_VERIF

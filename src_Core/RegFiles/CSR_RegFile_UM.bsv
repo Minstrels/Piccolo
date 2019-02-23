@@ -255,19 +255,19 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    //      by storing it elsewhere
    // Reg #(Tagged_Capability) DDC         <- mkRegU;
 
-   Reg #(Tagged_Capability) UTCC        <- mkRegU;
-   Reg #(Tagged_Capability) UScratchC   <- mkRegU;
-   Reg #(Tagged_Capability) UEPCC       <- mkRegU;
+   Reg #(Tagged_Capability) rg_utcc        <- mkRegU;
+   Reg #(Tagged_Capability) rg_uscratchc   <- mkRegU;
+   Reg #(Tagged_Capability) rg_uepcc       <- mkRegU;
 
-   Reg #(Tagged_Capability) STCC        <- mkRegU;
-   Reg #(Tagged_Capability) SScratchC   <- mkRegU;
-   Reg #(Tagged_Capability) SEPCC       <- mkRegU;
+   Reg #(Tagged_Capability) rg_stcc        <- mkRegU;
+   Reg #(Tagged_Capability) rg_sscratchc   <- mkRegU;
+   Reg #(Tagged_Capability) rg_sepcc       <- mkRegU;
 
-   Reg #(Tagged_Capability) MTCC        <- mkRegU;
-   Reg #(Tagged_Capability) MSratchC    <- mkRegU;
-   Reg #(Tagged_Capability) MEPCC       <- mkRegU;
+   Reg #(Tagged_Capability) rg_mtcc        <- mkRegU;
+   Reg #(Tagged_Capability) rg_mscratchc   <- mkRegU;
+   Reg #(Tagged_Capability) rg_mepcc       <- mkRegU;
 
-   Reg #(Tagged_Capability) CCSR        <- mkRegU;
+   Reg #(Tagged_Capability) rg_ccsr        <- mkRegU;
 
 `else
    
@@ -512,7 +512,11 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	    csr_scounteren:m_csr_value = tagged Valid 0;
 
 	    csr_sscratch:  m_csr_value = tagged Valid rg_sscratch;
+	    `ifdef CHERI
+	    csr_sepc:      m_csr_value = tagged Valid tagged_addr(rg_sepcc);
+	    `else
 	    csr_sepc:      m_csr_value = tagged Valid rg_sepc;
+	    `endif
 	    csr_scause:    m_csr_value = tagged Valid (mcause_to_word (rg_scause));
 	    csr_stval:     m_csr_value = tagged Valid rg_stval;
 	    csr_sip:       m_csr_value = tagged Valid (sip_to_word (rg_mip, rg_mideleg));
@@ -536,7 +540,11 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	    csr_mcounteren:m_csr_value = tagged Valid (mcounteren_to_word (rg_mcounteren));
 
 	    csr_mscratch:  m_csr_value = tagged Valid rg_mscratch;
+	    `ifdef CHERI
+	    csr_mepc:      m_csr_value = tagged Valid tagged_addr(rg_mepcc);
+	    `else
 	    csr_mepc:      m_csr_value = tagged Valid rg_mepc;
+	    `endif
 	    csr_mcause:    m_csr_value = tagged Valid (mcause_to_word (rg_mcause));
 	    csr_mtval:     m_csr_value = tagged Valid rg_mtval;
 	    csr_mip:       m_csr_value = tagged Valid (mip_to_word (rg_mip));
@@ -627,7 +635,11 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	       csr_scounteren: noAction;
 
 	       csr_sscratch:   rg_sscratch <= word;
+	       `ifdef CHERI
+	       csr_sepc:       rg_sepcc     <= change_tagged_addr(tc_zero, word);
+	       `else
 	       csr_sepc:       rg_sepc     <= word;
+	       `endif
 	       csr_scause:     rg_scause   <= word_to_mcause (word);
 	       csr_stval:      rg_stval    <= word;
 	       csr_sip:        rg_mip      <= word_to_sip (word, rg_mip, rg_mideleg);
@@ -651,7 +663,11 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	       csr_mcounteren:rg_mcounteren <= word_to_mcounteren(word);
 
 	       csr_mscratch:  rg_mscratch <= word;
-	       csr_mepc:      rg_mepc     <= word;
+	       `ifdef CHERI
+	       csr_sepc:       rg_mepcc     <= change_tagged_addr(tc_zero, word);
+	       `else
+	       csr_sepc:       rg_mepc     <= word;
+	       `endif
 	       csr_mcause:    rg_mcause   <= word_to_mcause (word);
 	       csr_mtval:     rg_mtval    <= word;
 	       csr_mip:       rg_mip      <= word_to_mip (word, rg_mip);
@@ -888,6 +904,16 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	 $display ("%0d: CSR_Regfile.csr_trap_actions:", rg_mcycle);
 	 $display ("    from priv %0d  pc 0x%0h  interrupt %0d  exc_code %0d  xtval 0x%0h",
 		   from_priv, pc, pack (interrupt), exc_code, xtval);
+`ifdef CHERI
+`ifdef ISA_PRIV_S
+	 fa_show_trap_csrs (s_Priv_Mode, rg_mip, rg_mie, 0, 0, rg_scause,
+			    word_to_mstatus (misa,  fn_read_sstatus (rg_mstatus)),
+			    rg_stvec, tagged_addr(rg_sepcc), rg_stval);
+`endif
+	 fa_show_trap_csrs (m_Priv_Mode, rg_mip, rg_mie, rg_medeleg, rg_mideleg, rg_mcause,
+			    rg_mstatus,
+			    rg_mtvec, tagged_addr(rg_mepcc), rg_mtval);
+`else
 `ifdef ISA_PRIV_S
 	 fa_show_trap_csrs (s_Priv_Mode, rg_mip, rg_mie, 0, 0, rg_scause,
 			    word_to_mstatus (misa,  fn_read_sstatus (rg_mstatus)),
@@ -896,6 +922,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	 fa_show_trap_csrs (m_Priv_Mode, rg_mip, rg_mie, rg_medeleg, rg_mideleg, rg_mcause,
 			    rg_mstatus,
 			    rg_mtvec, rg_mepc, rg_mtval);
+`endif
       end
 
       let new_priv    = fn_new_priv_on_exception (from_priv,
@@ -908,20 +935,37 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       let new_mstatus = fn_mstatus_upd_on_trap (rg_mstatus, from_priv, new_priv);
       rg_mstatus     <= new_mstatus;
 
+`ifdef CHERI
+      Reg #(Tagged_Capability)   rg_xepc   = rg_mepcc;
+   `ifdef ISA_PRIV_S
+      if (new_priv != m_Priv_Mode) begin
+         rg_xepc   = rg_sepcc;
+      end
+   `endif
+`else
       Reg #(Word)   rg_xepc   = rg_mepc;
+   `ifdef ISA_PRIV_S
+      if (new_priv != m_Priv_Mode) begin
+         rg_xepc   = rg_sepc;
+      end
+   `endif
+`endif
       Reg #(MCause) rg_xcause = rg_mcause;
       Reg #(Word)   rg_xtval  = rg_mtval;
       Reg #(MTVec)  rg_xtvec  = rg_mtvec;
 `ifdef ISA_PRIV_S
       if (new_priv != m_Priv_Mode) begin
-         rg_xepc   = rg_sepc;
          rg_xcause = rg_scause;
          rg_xtval  = rg_stval;
          rg_xtvec  = rg_stvec;
       end
 `endif
 
+`ifdef CHERI
+      rg_xepc        <= change_tagged_addr(tc_zero,pc);
+`else
       rg_xepc        <= pc;
+`endif
       let xcause      = MCause {interrupt: pack (interrupt), exc_code: exc_code};
       rg_xcause      <= xcause;
       rg_xtval       <= xtval;
@@ -950,10 +994,18 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    method ActionValue #(Tuple3 #(Addr, Priv_Mode, Word)) csr_ret_actions (Priv_Mode from_priv);
       match { .new_mstatus, .to_priv } = fn_mstatus_upd_on_ret (rg_mstatus, from_priv);
       rg_mstatus  <= new_mstatus;
+      `ifdef CHERI
+      Word next_pc = tagged_addr(rg_mepcc);
+      `else
       Word next_pc = rg_mepc;
+      `endif
 `ifdef ISA_PRIV_S
       if (from_priv != m_Priv_Mode)
-	 next_pc = rg_sepc;
+      `ifdef CHERI
+      next_pc = tagged_addr(rg_sepcc);
+      `else
+      next_pc = rg_sepc;
+      `endif
 `endif
       return tuple3 (next_pc, to_priv, mstatus_to_word (new_mstatus));
    endmethod
@@ -1076,35 +1128,35 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    
    method Action write_csr_cap(CapCSR_Addr cap_addr, Tagged_Capability value);
      case (cap_addr)
-        ccsr_ddc:       DDC <= value;
+        //ccsr_ddc:       DDC <= value;
         
-        ccsr_utcc:      UTCC <= value;
-        ccsr_uscratchc: UScratchC <= value;
-        ccsr_uepcc:     UEPCC <= value;
+        ccsr_utcc:      rg_utcc <= value;
+        ccsr_uscratchc: rg_uscratchc <= value;
+        ccsr_uepcc:     rg_uepcc <= value;
         
-        ccsr_stcc:      STCC <= value;
-        ccsr_sscratchc: SScratchC <= value;
-        ccsr_sepcc:     SEPCC <= value;
+        ccsr_stcc:      rg_stcc <= value;
+        ccsr_sscratchc: rg_sscratchc <= value;
+        ccsr_sepcc:     rg_sepcc <= value;
         
-        ccsr_mtcc:      MTCC <= value;
-        ccsr_mscratchc: MScratchC <= value;
-        ccsr_mepcc:     MEPCC <= value;
-     endcase;
+        ccsr_mtcc:      rg_mtcc <= value;
+        ccsr_mscratchc: rg_mscratchc <= value;
+        ccsr_mepcc:     rg_mepcc <= value;
+     endcase
    endmethod
    
    method Tagged_Capability read_csr_cap (CapCSR_Addr cap_addr);
         return case (cap_addr)
-            ccsr_ddc:       DDC;
-            ccsr_utcc:      UTCC;
-            ccsr_uscratchc: UScratchC;
-            ccsr_uepcc:     UEPCC;
-            ccsr_stcc:      STCC;
-            ccsr_sscratchc: SScratchC;
-            ccsr_sepcc:     SEPCC;
-            ccsr_mtcc:      MTCC;
-            ccsr_mscratchc: MScratchC;
-            ccsr_mepcc:     MEPCC;
-            default:        0;
+            //ccsr_ddc:       DDC;
+            ccsr_utcc:      rg_utcc;
+            ccsr_uscratchc: rg_uscratchc;
+            ccsr_uepcc:     rg_uepcc;
+            ccsr_stcc:      rg_stcc;
+            ccsr_sscratchc: rg_sscratchc;
+            ccsr_sepcc:     rg_sepcc;
+            ccsr_mtcc:      rg_mtcc;
+            ccsr_mscratchc: rg_mscratchc;
+            ccsr_mepcc:     rg_mepcc;
+            default:        tc_zero;
         endcase;
    endmethod
    

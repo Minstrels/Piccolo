@@ -163,10 +163,10 @@ Tagged_Capability tc_null =
 Tagged_Capability tc_pcc_vals =
 		Tagged_Capability {
 			tag: 1'b0,
-			capability: {15'h7fff, 2'b00, 6'b11100, 
+			capability: {15'h7fff, 2'b00, 6'b11100, 1'b0,
 							20'h00000, 20'h11111, 
 							64'h0000_0000_0000_0000
-		};
+		}};
 
 Capability cap_null = fv_assemble_cap(
     Capability_Struct {
@@ -174,7 +174,7 @@ Capability cap_null = fv_assemble_cap(
         exponent:   6'b1111_11,
         sealed:     False,
         bottom:     20'b0,
-        top:        20'bfffff,
+        top:        20'hfffff,
         otype:      24'b0,
         addr:       64'b0
     }
@@ -203,18 +203,18 @@ function Capability fv_assemble_cap (Capability_Struct cap_s);
 endfunction
 
 function Bit #(15) cap_uperms  (Capability x); return x [127:113];       endfunction
-function Bit #(15) cap_exp     (Capability x); return x [110:105];       endfunction
+function Bit #(6)  cap_exp     (Capability x); return x [110:105];       endfunction
 function Bool      cap_sealed  (Capability x); return unpack(x[104]);    endfunction
 function Bit #(64) cap_addr    (Capability x); return x [63:0];          endfunction
 function Bit #(64) tagged_addr (Tagged_Capability x); 
     return cap_addr(x.capability); 
 endfunction
 
-function Bit #(15) cap_bottom    (Capability x); 
+function Bit #(20) cap_bottom    (Capability x); 
     return cap_sealed(x) ? {x[103:96], 12'b0} : x[103:84];
 endfunction
 
-function Bit #(15) cap_top    (Capability x); 
+function Bit #(20) cap_top    (Capability x); 
     return cap_sealed(x) ? {x[83:76], 12'b0} : x[83:64];
 endfunction
 
@@ -296,9 +296,6 @@ Bit #(5) f5_CCLEARTAG   = 5'b01011; // = 0x0b
 Bit #(5) f5_CMOVE       = 5'b01010; // = 0x0a
 
 Bit #(5) f5_CJALR       = 5'b01100; // = 0x0c
-
-Bit #(5) f5_CCHECKPERM  = 5'b00100; // = 0x08
-Bit #(5) f5_CCHECKTYPE  = 5'b00101; // = 0x09
 
 Bit #(5) f5_FASTCLEAR   = 5'b01101; // = 0x0d
 Bit #(5) f5_FPCLEAR     = 5'b10000; // = 0x10
