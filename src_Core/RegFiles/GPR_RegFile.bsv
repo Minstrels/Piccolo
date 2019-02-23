@@ -57,10 +57,10 @@ interface GPR_RegFile_IFC;
    method Tagged_Capability read_rs2 (RegName rs2);
    // Capability register write
    (* always_ready *)
-   method Action write_rd_cap (RegName rd, Tagged_Capability rd_val);
+   method Action write_rd (RegName rd, Tagged_Capability rd_val);
    // Integer register write. Clears tag and upper XLEN bits
    (* always_ready *)
-   method Action write_rd (RegName rd, WordXL rd_val);
+   method Action write_rd_int (RegName rd, WordXL rd_val);
    (* always_ready *)
    method Action clear_quarter (Bit #(2) QID, Bit #(8) Mask);
 `else
