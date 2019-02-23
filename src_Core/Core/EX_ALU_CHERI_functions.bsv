@@ -42,7 +42,8 @@ fv_ALU;
 // Project imports
 
 import ISA_Decls   :: *;
-import CPU_Globals :: *;
+import CPU_Globals :: *; 
+// import Capability128ccLibs :: *;
 
 // TODO: Which fields definitely need to be capabilities/tagged_capabilities?
 //       Do we need anything from PCC?
@@ -1057,9 +1058,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 };
             end
         end
-        // TODO: ALL OF THESE.
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin // 0x08
-        
+            // Start with the assumption that the bounds are in a representable format.
+            
+            
         end
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin // 0x09
         // TODO: Bounds accuracy - need top and bottom to be representable in 8 bits or fewer
@@ -1203,7 +1205,6 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     let rs1_cap  = inputs.rs1_val.capability;
     // Some CHERI ops have a 5-bit decoding value in the rs2 position rather than the
     // standard position used in the base RISC-V ISA.
-    // TODO: Do we need to extend after pack, or does typing sort it out?
     if      (inputs.decoded_instr.rs2 == f5_CGETPERM)   begin
         Bit #(15) perms = rs1_cap[127:113];
         // If we're mimicing the MIPS behaviour, we have a weird gap between perms and uperms
@@ -1427,8 +1428,13 @@ function Bool fv_checkValid_Execute (Tagged_Capability rs1);
     return True;
 endfunction
 
+function Bool fv_checkRange2 (Tagged_Capability rs1);
+    let upperlim = fv_getTop(rs1);
+    let lowerlim = fv_getBase(rs1);
+    let ptr = cap_addr(rs1.capability);
+    return (ptr >= lowerlim && (ptr + 4) <= upperlim);
+endfunction
 
-// TODO: Change this for the 2^e alignment requirement.
 function Bool fv_checkRange (Tagged_Capability rs1);
 	let exp = unpack(fv_getExp(rs1));
     let val = (rs1.capability[63:0] >> exp);
