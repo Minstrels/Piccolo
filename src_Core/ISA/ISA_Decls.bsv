@@ -158,6 +158,16 @@ Tagged_Capability tc_null =
             capability: cap_null
         };
 
+// In the reduced model, we don't actually need a top field - we include
+// it for compatibility.
+Tagged_Capability tc_pcc_vals =
+		Tagged_Capability {
+			tag: 1'b0,
+			capability: {15'h7fff, 2'b00, 6'b11100, 
+							20'h00000, 20'h11111, 
+							64'h0000_0000_0000_0000
+		};
+
 Capability cap_null = fv_assemble_cap(
     Capability_Struct {
         uperms:     15'b0,
