@@ -282,7 +282,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
             ||((rg_stage2.op_stage2 == OP_Stage2_AMO) && (rg_f5 != f5_AMO_SC))
         `endif
         ) begin
+        `ifdef CHERI
             info_RVFI_s2.mem_rmask = getMemMask(instr_funct3(rg_stage2.instr),tagged_addr(rg_stage2.addr));
+         `else
+            info_RVFI_s2.mem_rmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+         `endif
         end
         `ifdef ISA_A
         // If we're doing an AMO that's not an LR, we need to set the write mask as well.
