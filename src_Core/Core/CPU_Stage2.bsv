@@ -177,7 +177,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
    let  trap_info_dmem = Trap_Info {epc:      rg_stage2.pc,
 				    exc_code: dcache.exc_code,
+				    `ifdef CHERI
 				    badaddr:  tagged_addr(rg_stage2.addr) };
+				    `else
+				    badaddr:  rg_stage2.addr};
+				    `endif
 
 `ifdef ISA_FD
    let  trap_info_fbox = Trap_Info {epc:      rg_stage2.pc,
@@ -250,12 +254,20 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	    let data_to_stage3 = data_to_stage3_base;
 	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
+	    `ifdef CHERI
 	    data_to_stage3.rd_val   = change_tagged_addr(tc_zero, result);
+	    `else
+	    data_to_stage3.rd_val   = result;
+	    `endif
 
 	    let bypass = bypass_base;
 	    if (rg_stage2.rd != 0) begin    // TODO: is this test necessary?
 	       bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
+	       `ifdef CHERI
 	       bypass.rd_val       = change_tagged_addr(tc_zero, result);
+	       `else
+	       bypass.rd_val       = result;
+	       `endif
 	    end
 
 `ifdef INCLUDE_TANDEM_VERIF
@@ -270,7 +282,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
             ||((rg_stage2.op_stage2 == OP_Stage2_AMO) && (rg_f5 != f5_AMO_SC))
         `endif
         ) begin
-            info_RVFI_s2.mem_rmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+            info_RVFI_s2.mem_rmask = getMemMask(instr_funct3(rg_stage2.instr),tagged_addr(rg_stage2.addr));
         end
         `ifdef ISA_A
         // If we're doing an AMO that's not an LR, we need to set the write mask as well.
@@ -309,9 +321,14 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
 	    data_to_stage3.rd       = 0;
 `ifdef RVFI
-	    data_to_stage3.rd_val   = 0;
 	    let info_RVFI_s2 = info_RVFI_s2_base;
+    `ifdef CHERI
+	    data_to_stage3.rd_val   = tc_zero;
+        info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr), tagged_addr(rg_stage2.addr));
+    `else
+	    data_to_stage3.rd_val   = 0;
         info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+	`endif
         data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `else
 	    data_to_stage3.rd_val   = ?;
