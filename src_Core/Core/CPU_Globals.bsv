@@ -402,6 +402,19 @@ typedef struct {
    } Output_Stage3
 deriving (Bits);
 
+`ifdef CHERI
+// TODO: FPClear?
+function Bool instr_is_clear(Instr ins);
+    //opcode 0x5b, f3 0, and f7 0x7f.
+    return (
+            (instr_opcode(ins) == op_CAP) && 
+            (instr_funct3(ins) == 3'b000) &&
+            ((instr_rs2(ins)   == 5'hd) || (instr_rs2(ins) == 5'h10)) &&
+            (instr_funct7(ins) == f7_CAPINSPECT)
+           );
+endfunction
+`endif
+
 instance FShow #(Output_Stage3);
    function Fmt fshow (Output_Stage3 x);
       Fmt fmt = $format ("Output_Stage3");
