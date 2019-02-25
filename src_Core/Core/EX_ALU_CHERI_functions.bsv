@@ -345,7 +345,11 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
     // Gives a defined value when in verification mode.
     alu_outputs.val2      = change_tagged_addr(inputs.pcc, branch_target);    // For tandem verifier only
     `ifdef RVFI
-    alu_outputs.val1      = 0;
+        `ifdef CHERI
+        alu_outputs.val1      = tc_zero;
+        `else
+        alu_outputs.val1      = 0;
+        `endif
     `endif
     return alu_outputs;
 endfunction
@@ -1268,33 +1272,28 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
             alu_outputs.control = ((tagged_addr(inputs.rs1_val)[1:0] == 2'b00) ? CONTROL_BRANCH : CONTROL_TRAP);
         end
     end
-    // XXX: Comments in the spec suggest check-perm/type might be removed in future.
+    // XXX: Comments in the spec suggest check-perm/type will be removed in future.
     //else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
     
     //end
     //else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
         
     //end
-    // As these intructions won't write back to registers like most do, it makes sense
-    // to use a new CONTROL type.
-    // As for ALU output values, we'll set val1[1:0] = quadrant, val2[7:0] = mask, and addr[0] = GP/FP
+    //
+    /* TODO: This logic isn't currently utilised, so don't check it.
+    // for ALU output values, we'll set val1[9:8] = quadrant, val1[7:0] = mask
     else if (inputs.decoded_instr.rs2 == f5_FASTCLEAR)  begin
-        alu_outputs.control = CONTROL_CLEAR;
-        alu_outputs.val1 = change_tagged_addr(tc_zero, extend(inputs.instr[19:18]));
-        alu_outputs.val2 = change_tagged_addr(tc_zero, extend({inputs.instr[17:15], inputs.instr[11:7]}));
-        alu_outputs.addr = tc_zero;
+        alu_outputs.val1 = change_tagged_addr(tc_zero, extend({inputs.instr[19:18], inputs.instr[17:15], inputs.instr[11:7]}));
     end
-    `ifdef ISA_FD
-    else if (inputs.decoded_instr.rs2 == f5_FPCLEAR)    begin
-        alu_outputs.control = CONTROL_CLEAR;
-        alu_outputs.val1 = change_tagged_addr(tc_zero, extend(inputs.instr[19:18]));
-        alu_outputs.val2 = change_tagged_addr(tc_zero, extend({inputs.instr[17:15], inputs.instr[11:7]}));
-        alu_outputs.addr = change_tagged_addr(tc_zero, 64'h1);
+    `ifdef ISA_F
+    else if (inputs.decoded_instr.rs2 == f5_FPCLEAR)    begin 
+        alu_outputs.val1 = change_tagged_addr(tc_zero, extend({inputs.instr[19:18], inputs.instr[17:15], inputs.instr[11:7]}));
     end
-    `endif
+    `endif*/
     else begin
         alu_outputs.control = CONTROL_TRAP;
     end
+    alu_outputs.op_stage2 = OP_Stage2_ALU;
     return alu_outputs;
 endfunction
 
