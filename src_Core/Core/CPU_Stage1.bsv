@@ -101,8 +101,10 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    FIFOF #(Token) f_reset_rsps <- mkFIFOF;
 
    Reg #(Bool) rg_full  <- mkReg (False);
-   
+
+`ifdef CHERI
    Reg #(Tagged_Capability) rg_ddc <- mkRegU();
+`endif
 
    // ----------------------------------------------------------------
    // BEHAVIOR
@@ -124,7 +126,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       // TODO: PCC is read-only except for internal manipulation. Are there any cases where we change permissions or bounds on PCC?
       //       If not, we can simply keep upper bits of PCC as a static value (at compile time?) and then only need to pass the standard 
       //       program counter in cache interactions.
+`ifdef CHERI
       let pcc = change_tagged_addr(tc_pcc_vals, pc);
+`endif
       
       let instr         = icache.instr;
       let decoded_instr = fv_decode (instr);
@@ -260,14 +264,20 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	    if (alu_outputs.exc_code == exc_code_ILLEGAL_INSTRUCTION)
 	        badaddr = zeroExtend (instr);
 	    else if (alu_outputs.exc_code == exc_code_INSTR_ADDR_MISALIGNED)
+	    `ifdef CHERI
 	        badaddr = tagged_addr(alu_outputs.addr);    // branch target pc
+	    `else
+	        badaddr = alu_outputs.addr;    // branch target pc
+	    `endif
 	    let trap_info = Trap_Info {epc:      pc,
 				    exc_code: alu_outputs.exc_code,
 				    badaddr:  badaddr};  // v1.10 - mtval
 `ifdef CHERI
         let next_pcc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : change_tagged_addr(pcc,pc+4));
-`endif
 	    let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? tagged_addr(alu_outputs.addr) : pc + 4);
+`else
+	    let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : pc + 4);
+`endif
 `ifdef RVFI
 	    let info_RVFI = Data_RVFI_Stage1 {
 	                        instr:          instr,
@@ -338,6 +348,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    method Action deq ();
       let data_to_stage2 = fv_out.data_to_stage2;
       Bool wrote_csr_minstret = False;
+      /* `ifdef CHERI
       if (fv_out.control == CONTROL_CLEAR) begin
          // If we don't have FP support, don't worry about checking it.
          `ifdef ISA_F
@@ -356,7 +367,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
          `endif
       end
       // TODO: do we suppress MINSTRET increment if we write minstret here?
-      else if (data_to_stage2.csr_valid) begin
+      else `endif */
+      if (data_to_stage2.csr_valid) begin
         `ifdef CHERI
         CSR_Addr csr_addr = truncate (tagged_addr(data_to_stage2.addr));
         WordXL   csr_val  = tagged_addr(data_to_stage2.val2);
