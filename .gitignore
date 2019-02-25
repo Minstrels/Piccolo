@@ -21,3 +21,6 @@ simv64
 bv64
 gdb
 cherib
+cherisim
+cheriv
+rvfib
