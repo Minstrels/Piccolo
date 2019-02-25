@@ -148,7 +148,6 @@ BSC_FLAGSGDB += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D CSR_REGFILE_UM \
 		-D INCLUDE_GDB_CONTROL\
 		-D Near_Mem_Caches \
-		-D FABRIC64 \
 		+RTS -K64M -RTS  -show-range-conflict
 		
 BSC_CHERIFLAGS += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
@@ -164,6 +163,39 @@ BSC_CHERIFLAGS += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D CSR_REGFILE_UM \
 		-D CHERI \
 		+RTS -K64M -RTS  -show-range-conflict
+		
+		
+BSC_CHERISIMS += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
+		-suppress-warnings G0020 \
+		-D RV64 \
+		-D FABRIC64 \
+		-D SV39 \
+		-D ISA_PRIV_M \
+		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
+		-D SHIFT_BARREL \
+		-D CSR_REGFILE_UM \
+		-D INCLUDE_GDB_CONTROL\
+		-D Near_Mem_Caches \
+		-D CHERI\
+		+RTS -K64M -RTS  -show-range-conflict
+		
+BSC_CHERIV += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
+		-suppress-warnings G0020 \
+		-D RV64 \
+		-D FABRIC64 \
+		-D SV39 \
+		-D ISA_PRIV_M \
+		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
+		-D SHIFT_BARREL \
+		-D CSR_REGFILE_UM \
+		-D Near_Mem_Caches \
+		-D CHERI\
+		-D RVFI \
+		-D RVFI_DII \
+		+RTS -K64M -RTS  -show-range-conflict
+		#-D INCLUDE_GDB_CONTROL\
 
 # ================================================================
 # Make targets
@@ -183,6 +215,8 @@ TMP_GDBV = -bdir gdbv -simdir gdbv -info-dir gdbv -vdir gdbv
 TMP_GDB = -bdir gdb -simdir gdb -info-dir gdb -vdir gdb
 
 TMP_CHERI = -bdir cherib -simdir cherib -info-dir cherib -vdir cherib
+TMP_CHERISIM = -bdir cherisim -simdir cherisim -info-dir cherisim -vdir cherisim
+TMP_CHERIV = -bdir cheriv -simdir cheriv -info-dir cheriv -vdir cheriv
 
 .PHONY: sim32
 sim32:
@@ -300,12 +334,41 @@ cheri:
 	@echo "INFO: Compilation completed"
 
 
+.PHONY: cherisim
+cherisim:
+	@echo "INFO: Compiling CHERI for simulation"
+	mkdir -p cherisim
+	bsc -u -elab -sim -D SIM $(USEFUL_FLAGS) $(TMP_CHERISIM) $(BSC_CHERISIMS) $(BSC_PATH) $(TOPFILE)
+	@echo "INFO: Compilation completed, starting linking"
+	bsc -sim -parallel-sim-link 8 \
+		$(TMP_CHERISIM)\
+		-e $(TOPMODULE) -o ./$(BSIM_EXE_CHERI) \
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c
+	@echo "INFO: linked CHERI objects into Bluesim executable"
+	
+	
+.PHONY: cheriV
+cheriV:
+	@echo "INFO: Compiling CHERI RVFI for simulation"
+	mkdir -p cheriv
+	bsc -u -elab -sim -D SIM $(USEFUL_FLAGS) $(TMP_CHERIV) $(BSC_CHERIV) $(BSC_PATH) $(TOPFILE)
+	@echo "INFO: Compilation completed, starting linking"
+	bsc -sim -parallel-sim-link 8 \
+		$(TMP_CHERIV)\
+		-e $(TOPMODULE) -o ./$(BSIM_EXE_CHERIV) \
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c
+	@echo "INFO: linked CHERI objects into Bluesim executable"
+
+
 BSIM_EXE_FILE = exe_HW_bsim
 BSIM_EXE_FILE64 = exe_HW_bsim64
 BSIM_EXE_FV64 = exe_HW_vs64
 BSIM_EXE_FV32 = exe_HW_vs32
 BSIM_EXE_FILEGDB = exe_GDB
 BSIM_EXE_CHERI = exe_CHERI
+BSIM_EXE_CHERIV = exe_CHERIV
 
 BSC_C_FLAGS += \
 	-Xc++  -D_GLIBCXX_USE_CXX11_ABI=0 \
