@@ -147,6 +147,10 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    IMem_IFC fake_imem = rvfi_bridge.insr_CPU;
 `endif
 
+/* `ifdef CHERI
+   Reg #(Bool) clear_stall <- mkReg(False);
+`endif*/ 
+
    // ----------------
    // For debugging
 
@@ -603,12 +607,15 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
         Bool stage2_full = (stage2.out.ostatus != OSTATUS_EMPTY);
         Bool stage1_full = (stage1.out.ostatus != OSTATUS_EMPTY);
         
-        //$display("PIPELINE: S1 %s, S2 %s, S3 %s", getString(stage1_full), 
-        //                        getString(stage2_full), getString(stage3_full));
-
+        /* `ifdef CHERI
+        // We will stall next if we were stalled previously and we're not 
+        // about to commit the clear in question.
+        Bool next_is_stall = (clear_stall && !stage3.out.fn_clear);
+        `endif*/ 
+        
         // ----------------
         // Stage3 sink (does regfile writebacks)
-
+        
         if (stage3.out.ostatus == OSTATUS_PIPE) begin
 	        stage3.deq; 
 	        stage3_full = False;
@@ -646,6 +653,12 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	  && (! (stage1_is_csrrx && (   (stage2.out.ostatus != OSTATUS_EMPTY)
 				     || (stage3.out.ostatus != OSTATUS_EMPTY)))))
 	 begin
+	 /*`ifdef CHERI
+	    // Initiate stall if we see a clear instruction.
+	    if (instr_is_clear(stage1.out.data_to_stage2.instr)) begin
+	        next_is_stall = True;
+	    end
+	 `endif*/
 	    stage1.deq;                              stage1_full = False;
 	    stage2.enq (stage1.out.data_to_stage2);  stage2_full = True;
 	 end
@@ -664,12 +677,18 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	       //       i.e., csr_satp/csr_mstatus/csr_sstatus?
 	       rg_state <= CPU_CSRRX_STALL;
 	    end
-	    else begin
+	    else
+	    /*`ifdef CHERI
+	    if (!next_is_stall)
+	    `endif*/
+	    begin
 	       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, False);
 	       stage1_full = True;
 	    end
 	 end
-
+	 /*`ifdef CHERI
+	 clear_stall <= next_is_stall;
+	 `endif*/
       stage3.set_full (stage3_full);
       stage2.set_full (stage2_full);
       stage1.set_full (stage1_full);
