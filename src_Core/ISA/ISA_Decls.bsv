@@ -163,7 +163,7 @@ Tagged_Capability tc_null =
 Tagged_Capability tc_pcc_vals =
 		Tagged_Capability {
 			tag: 1'b0,
-			capability: {15'h7fff, 2'b00, 6'b11100, 1'b0,
+			capability: {15'h7fff, 2'b00, 6'b11111, 1'b0,
 							20'h00000, 20'h11111, 
 							64'h0000_0000_0000_0000
 		}};

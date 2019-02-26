@@ -1148,12 +1148,14 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             // TODO: Are we keeping the base ISA principle that rs1 = 0 => no write?
             let ccsr_addr = inputs.decoded_instr.rs2;
             Bool addr_valid = fv_check_CapCSR_Addr(ccsr_addr);          // IDx points to a valid register
-            Bool priv_valid = (inputs.cur_priv >= ccsr_addr[4:3]);      // We have the right privilege to write the CCSR
+            Bool priv_valid = (inputs.cur_priv >= ccsr_addr[4:3]);      // We have the right privilege to access the CCSR
             Bool perm_valid = unpack(inputs.pcc.capability[123]);       // We have the ACCESS_SPECIAL permission in PCC.
+            $display ("Addr: ", fshow (addr_valid), "; Privilege: ", fshow(priv_valid), "; Perms: ", fshow(perm_valid));
             Bool all_valid = addr_valid && priv_valid && perm_valid;
             alu_outputs.ccsr_valid = (inputs.decoded_instr.rs1 != 0);   // We are writing the CCSR
             // Access/read fault, or trying to write PCC
-            if ((!all_valid) || (ccsr_addr == 0 && inputs.decoded_instr.rs1 != 0)) begin
+            if ((!all_valid) || (ccsr_addr == 0 && alu_outputs.ccsr_valid)) begin
+                $display ("Threw trap in f7_CSPECIALRW");
                 // Permissions are a capability issue, addressing and privilege fit existing exception paradigms.
                 alu_outputs.exc_code = (perm_valid ? exc_code_CAPABILITY_EXC : exc_code_ILLEGAL_INSTRUCTION);
                 alu_outputs.control = CONTROL_TRAP;
