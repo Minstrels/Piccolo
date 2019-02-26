@@ -969,7 +969,7 @@ function ALU_Outputs fv_AMO (ALU_Inputs inputs);
    alu_outputs.control   = ((legal_f5 && legal_width) ? CONTROL_STRAIGHT : CONTROL_TRAP);
    alu_outputs.op_stage2 = OP_Stage2_AMO;
    alu_outputs.addr      = inputs.rs1_val;
-   alu_outputs.val1      = zeroExtend (inputs.decoded_instr.funct7);
+   alu_outputs.val1      = change_tagged_addr(tc_zero, zeroExtend (inputs.decoded_instr.funct7));
    alu_outputs.val2      = inputs.rs2_val;
 
    return alu_outputs;

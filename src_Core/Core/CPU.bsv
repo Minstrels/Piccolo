@@ -271,7 +271,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
     Reg   #(Bool)                  rg_handler    <- mkReg (False);
     Reg   #(Bool)                  rg_donehalt       <- mkReg (False);    
     
-    Reg #(MIP) rg_prev_mip <- mkRegU;
+    Reg #(MIP) rg_prev_mip <- mkConfigRegU;
     
 `endif
 
