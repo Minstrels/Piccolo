@@ -166,7 +166,8 @@ Tagged_Capability tc_pcc_vals =
 			capability: {15'h7fff, 2'b00, 6'b111111, 1'b0,
 							20'h00000, 20'h11111, 
 							64'h0000_0000_0000_0000
-		}};
+		    }
+		};
 		
 Tagged_Capability tc_initial = 
         Tagged_Capability {

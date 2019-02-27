@@ -1183,7 +1183,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             alu_outputs.ccsr_valid = (inputs.decoded_instr.rs1 != 0);
             
             // Access/read fault, or trying to write PCC
-            if ((!all_valid) || (ccsr_addr == 0 && inputs.decoded_instr.rs1 != 0)) begin
+            if ((!all_valid) || (ccsr_addr == 0 && alu_outputs.ccsr_valid)) begin
+                $display ("Threw trap in f7_CSPECIALRW");
                 // Permissions are a capability issue, addressing and privilege fit existing exception paradigms.
                 alu_outputs.exc_code = (perm_valid ? exc_code_CAPABILITY_EXC : exc_code_ILLEGAL_INSTRUCTION);
                 alu_outputs.control = CONTROL_TRAP;
