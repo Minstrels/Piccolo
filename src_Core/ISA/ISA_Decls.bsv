@@ -119,7 +119,7 @@ endfunction
 
 
 typedef 128 CLEN;
-typedef Bit #(CLEN) Capability;
+//typedef Bit #(CLEN) Capability;
 typedef Bit #(5) CapCSR_Addr;
 
 // "Decoded" capability type
@@ -139,7 +139,7 @@ deriving (Bits, Eq);
 
 typedef struct {
     Bit #(1)      tag;
-    Capability   capability;
+    Bit #(CLEN)   capability;
     } Tagged_Capability
 deriving (Bits, Eq);
 
@@ -162,11 +162,20 @@ Tagged_Capability tc_null =
 // it for compatibility.
 Tagged_Capability tc_pcc_vals =
 		Tagged_Capability {
-			tag: 1'b0,
-			capability: {15'h7fff, 2'b00, 6'b11100, 1'b0,
+			tag: 1'b1,
+			capability: {15'h7fff, 2'b00, 6'b111111, 1'b0,
 							20'h00000, 20'h11111, 
 							64'h0000_0000_0000_0000
 		}};
+		
+Tagged_Capability tc_initial = 
+        Tagged_Capability {
+            tag: 1'b0,
+            capability: {15'h0000, 2'b00, 6'b111111, 1'b0, 
+                            20'h00000, 20'h11111,
+                            64'h0000_0000_0000_0000
+                            }
+        };
 
 Capability cap_null = fv_assemble_cap(
     Capability_Struct {

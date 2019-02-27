@@ -89,10 +89,10 @@ Empty
 
    // Display a banner
    rule rl_step0 (! rg_banner_printed);
-      $display ("================================================================");
+      /*$display ("================================================================");
       $display ("Bluespec RISC-V standalone system simulation v1.2");
       $display ("Copyright (c) 2017-2018 Bluespec, Inc. All Rights Reserved.");
-      $display ("================================================================");
+      $display ("================================================================");*/
 
       rg_banner_printed <= True;
 

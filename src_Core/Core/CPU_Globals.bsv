@@ -241,6 +241,9 @@ typedef struct {
    Op_Stage2  op_stage2;
    RegName    rd;
    Bool       csr_valid;
+`ifdef CHERIDEBUG
+   Bit#(64)   debug_out;
+`endif
 `ifdef CHERI
    Bool       ccsr_valid;
    Tagged_Capability addr;

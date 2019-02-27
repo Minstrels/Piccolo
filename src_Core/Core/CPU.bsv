@@ -448,14 +448,14 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       rg_self_stop_req <= False;
 `endif
 
-      $display ("================================================================");
+      /*$display ("================================================================");
       $write   ("CPU: Bluespec  RISC-V  Piccolo  v3.0");
       if (rv_version == RV32)
 	 $display (" (RV32)");
       else
 	 $display (" (RV64)");
       $display ("Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved.");
-      $display ("================================================================");
+      $display ("================================================================");*/
 
       gpr_regfile.server_reset.request.put (?);
 `ifdef ISA_F
@@ -740,7 +740,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(True,epc,next_pc,new_mstatus,mcause,True,instr);
       f_to_verifier.enq (to_verifier);
 `elsif RVFI
-      $display("next_pc: %h, trap", next_pc);
+      $display("next_pc: %h, trap: %h", next_pc, exc_code);
       let outpacket = getRVFIInfoCondensed(stage2.out.data_to_stage3, next_pc,
                                 rg_inum, True, exc_code, rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;

@@ -26,11 +26,16 @@
  * @BERI_LICENSE_HEADER_END@
  */
 
-import Debug::*;
+//import Debug::*;
 import DefaultValue::*;
 import MIPS::*;
-import VnD::*;
+//import VnD::*;
 //import Assert::*;
+
+typedef struct {
+    Bool v;
+    ty   d;
+} VnD #(type ty) deriving (Eq, Bits);
 
 `ifdef CAP64
     typedef 0  UPermW;
@@ -98,7 +103,7 @@ staticAssert(valueOf(SizeOf#(CapabilityInMemory))==valueOf(SizeOf#(Capability)),
 );
 */
 // Bit type of the debug capability
-typedef Bit#(CapW) DebugCap;
+//typedef Bit#(CapW) DebugCap;
 // large capability address type (with extra bits at the top)
 typedef Bit#(TAdd#(CapAddressW,2)) LCapAddress;
 // Format of the cheri concentrate capability
@@ -334,9 +339,9 @@ endfunction
 
 function ActionValue#(CapFat) setBounds(CapFat cap, Address lengthFull, Bool exact) =
     actionvalue
-        debug2("cap", $display("SETBOUNDS --- initial cap ", fshow(cap)));
-        debug2("cap", $display("SETBOUNDS --- length 0x%x", lengthFull));
-        debug2("cap", $display("SETBOUNDS --- is exact 0b%b", exact));
+        //debug2("cap", $display("SETBOUNDS --- initial cap ", fshow(cap)));
+        //debug2("cap", $display("SETBOUNDS --- length 0x%x", lengthFull));
+        //debug2("cap", $display("SETBOUNDS --- is exact 0b%b", exact));
         CapFat ret = cap;
         // Find new exponent by finding the index of the most significant bit of the
         // length, or counting leading zeros in the high bits of the length, and
@@ -352,7 +357,7 @@ function ActionValue#(CapFat) setBounds(CapFat cap, Address lengthFull, Bool exa
         // Do this without subtraction
         //fromInteger(valueof(TSub#(SizeOf#(Address),TSub#(MW,1)))) - zeros;
         Exp e = (resetExp-1) - zeros;
-        debug2("cap", $display("SETBOUNDS --- zeros=%d, new exp %d", zeros, e));
+        //debug2("cap", $display("SETBOUNDS --- zeros=%d, new exp %d", zeros, e));
         // Force otype to unsealed.
         ret.otype = -1;
         // Derive new base bits by extracting MW bits from the capability
@@ -361,7 +366,7 @@ function ActionValue#(CapFat) setBounds(CapFat cap, Address lengthFull, Bool exa
         LCapAddress base = zeroExtend(tmpAddr);
         Bit#(TAdd#(MW,1)) newBaseBits = truncate(base>>e);
         
-        debug2("cap", $display("SETBOUNDS --- newBaseBits 0x%x", newBaseBits));
+        //debug2("cap", $display("SETBOUNDS --- newBaseBits 0x%x", newBaseBits));
         // Derive new top bits by extracting MW bits from the capability
         // address + requested length, starting at the new exponent's position,
         // and rounding up if significant bits are lost in the process.
@@ -380,7 +385,7 @@ function ActionValue#(CapFat) setBounds(CapFat cap, Address lengthFull, Bool exa
         lenRoundShift = fromInteger(shiftAmount-2);
         roundedLength = len+(len>>lenRoundShift);
         Bit#(UpperMW) newTopBitsRoundedHigher = truncate(((base+roundedLength)>>e)>>(1+bitsUsedByExp));
-        debug2("cap", $display("SETBOUNDS --- newTopBits 0x%x", newTopBits));
+        //debug2("cap", $display("SETBOUNDS --- newTopBits 0x%x", newTopBits));
         // Check if non-zero bits were lost in the low bits of top, either in the 'e'
         // shifted out bits or in the HalfExpW bits stolen for the exponent by creating
         // a mask with all bits set below the MSB of length and then masking all bits
@@ -390,23 +395,22 @@ function ActionValue#(CapFat) setBounds(CapFat cap, Address lengthFull, Bool exa
         // more to take in the bits that will be lost for the exponent when it is non-zero.
         LCapAddress lmaskLo = lmask>>fromInteger(shiftAmount+1);
         Bool lostSignificantTop  = (top&lmaskLo)!=0 && !maxZero;
-        debug2("cap", $display("SETBOUNDS --- lostSignificantTop %b", lostSignificantTop));
+        //debug2("cap", $display("SETBOUNDS --- lostSignificantTop %b", lostSignificantTop));
         // Check if non-zero bits were lost in the low bits of base, either in the 'e'
         // shifted out bits or in the HalfExpW bits stolen for the exponent
         Bool lostSignificantBase = (base&lmaskLo)!=0 && !maxZero;
-        debug2("cap", $display("SETBOUNDS --- lostSignificantBase %b", lostSignificantBase));
+        //debug2("cap", $display("SETBOUNDS --- lostSignificantBase %b", lostSignificantBase));
         // If either base or top lost significant bits and we wanted an exact setBounds,
         // void the return capability
         if (exact && (lostSignificantBase || lostSignificantTop)) ret.isCapability = False;
-        debug2("cap", $display("SETBOUNDS --- is return voided %b", !ret.isCapability));
+        //debug2("cap", $display("SETBOUNDS --- is return voided %b", !ret.isCapability));
         // We need to round up Exp if we round either bound and if the length is at the maximum.
         // The MSB of the length corrosponding to the length will be at MW-1 for it to be implied
         // correctly, but if we round either bound out, we will increase by 1 and this may push
         // the MSB up by one.
         // The lomask for checking for potential overflow should mask one more bit of the mantissa.
         lmaskLo = lmask>>fromInteger(shiftAmount-1);
-        debug2("cap", $display("SETBOUNDS --- lengthMax check, length: %x, lmask: %x, lmaskLo: %x, masked: %x", 
-                               len, lmask, lmaskLo, (len&(~lmaskLo))));
+        //debug2("cap", $display("SETBOUNDS --- lengthMax check, length: %x, lmask: %x, lmaskLo: %x, masked: %x", len, lmask, lmaskLo, (len&(~lmaskLo))));
         Bool lengthMax = (len&(~lmaskLo))==(lmask&(~lmaskLo));
         if(lengthMax && !maxZero) begin
            e = e+1;
@@ -414,11 +418,11 @@ function ActionValue#(CapFat) setBounds(CapFat cap, Address lengthFull, Bool exa
            ret.bounds.baseBits = truncateLSB(newBaseBits);
         end else if (lostSignificantTop) begin
           ret.bounds.topBits = {newTopBitsRounded,0};
-          debug2("cap", $display("SETBOUNDS --- topbits after rounding %x", ret.bounds.topBits));
+          //debug2("cap", $display("SETBOUNDS --- topbits after rounding %x", ret.bounds.topBits));
           ret.bounds.baseBits = truncate(newBaseBits);
         end else begin
           ret.bounds.topBits = truncate(newTopBits);
-          debug2("cap", $display("SETBOUNDS --- topbits after rounding %x", ret.bounds.topBits));
+          //debug2("cap", $display("SETBOUNDS --- topbits after rounding %x", ret.bounds.topBits));
           ret.bounds.baseBits = truncate(newBaseBits);
         end
         
@@ -437,7 +441,7 @@ function ActionValue#(CapFat) setBounds(CapFat cap, Address lengthFull, Bool exa
         end
         
         // Return derived capability
-        debug2("cap", $display("SETBOUNDS --- returning ", fshow(ret)));
+        //debug2("cap", $display("SETBOUNDS --- returning ", fshow(ret)));
         return ret;
     endactionvalue;
 function ActionValue#(CapFat) seal(CapFat cap, TempFields tf, CType otype) =

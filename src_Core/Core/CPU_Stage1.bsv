@@ -56,7 +56,12 @@ import CPU_Globals      :: *;
 import Near_Mem_IFC     :: *;
 import GPR_RegFile      :: *;
 import CSR_RegFile      :: *;
+
+`ifdef CHERI
+import EX_ALU_CHERI_functions :: *;
+`else
 import EX_ALU_functions :: *;
+`endif
 
 // ================================================================
 // Interface
@@ -103,7 +108,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    Reg #(Bool) rg_full  <- mkReg (False);
 
 `ifdef CHERI
-   Reg #(Tagged_Capability) rg_ddc <- mkRegU();
+   Reg #(Tagged_Capability) rg_ddc <- mkReg(tc_pcc_vals);
 `endif
 
    // ----------------------------------------------------------------
@@ -214,7 +219,6 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 				   misa:           csr_regfile.read_misa};
 
       let alu_outputs = fv_ALU (alu_inputs);
-
       Output_Stage1 output_stage1 = ?;
 
       // This stage is empty
@@ -304,6 +308,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
                             `endif
                         };
 `endif
+`ifdef CHERIDEBUG
+        //alu_outputs.debug_out = tagged_addr(ccsr_val);
+`endif
 	    let data_to_stage2 = Data_Stage1_to_Stage2 {priv:      cur_priv,
 						     pc:         pc,
 						     instr:      instr,
@@ -312,6 +319,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 						     csr_valid:  alu_outputs.csr_valid,
 `ifdef CHERI
                              ccsr_valid: alu_outputs.ccsr_valid,
+`endif
+`ifdef CHERIDEBUG
+                             debug_out:  alu_outputs.debug_out,
 `endif
 						     addr:       alu_outputs.addr,
 						     val1:       alu_outputs.val1,
@@ -348,26 +358,6 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    method Action deq ();
       let data_to_stage2 = fv_out.data_to_stage2;
       Bool wrote_csr_minstret = False;
-      /* `ifdef CHERI
-      if (fv_out.control == CONTROL_CLEAR) begin
-         // If we don't have FP support, don't worry about checking it.
-         `ifdef ISA_F
-         if (data_to_stage2.addr.capability[0] == 1'b0) begin
-         `endif
-            gpr_regfile.clear_quarter(
-                    data_to_stage2.val1.capability[1:0],
-                    data_to_stage2.val2.capability[7:0]);
-         `ifdef ISA_F
-         end
-         else begin
-            fpr_regfile.clear_quarter(
-                    data_to_stage2.val1.capability[1:0],
-                    data_to_stage2.val2.capability[7:0]);
-         end
-         `endif
-      end
-      // TODO: do we suppress MINSTRET increment if we write minstret here?
-      else `endif */
       if (data_to_stage2.csr_valid) begin
         `ifdef CHERI
         CSR_Addr csr_addr = truncate (tagged_addr(data_to_stage2.addr));
@@ -385,13 +375,16 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       else if (data_to_stage2.ccsr_valid) begin
         CapCSR_Addr ccsr = truncate (tagged_addr(data_to_stage2.addr));
         Tagged_Capability new_val = data_to_stage2.val2;
-        if (ccsr == ccsr_ddc )begin
+        if (ccsr == ccsr_ddc) begin
             rg_ddc <= new_val;
         end
         else begin
             csr_regfile.write_csr_cap (ccsr, new_val);
         end
+        //$display("CCSR val: %h", new_val);
       end
+      //$display("CCSR val option 2: %h", tagged_addr(data_to_stage2.val1));
+      $display("Debug out: %h", data_to_stage2.debug_out);
       `endif
    endmethod
 
