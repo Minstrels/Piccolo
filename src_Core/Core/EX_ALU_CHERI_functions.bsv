@@ -1561,17 +1561,6 @@ function Tagged_Capability fv_unseal(Tagged_Capability rs, Tagged_Capability rt)
     };
 endfunction
 
-function Bit#(129) to129Bit(Tagged_Capability tc);
-    return {tc.tag, tc.capability};
-endfunction
-
-function Tagged_Capability from129Bit(Bit#(129) pac);
-    return Tagged_Capability {
-        tag: pac[128],
-        capability: pac[127:0]
-    };
-endfunction
-
 // ================================================================
 
 endpackage

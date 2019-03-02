@@ -169,14 +169,16 @@ Tagged_Capability tc_pcc_vals =
 		    }
 		};
 		
-Tagged_Capability tc_initial = 
+/*Tagged_Capability tc_initial = 
         Tagged_Capability {
             tag: 1'b0,
             capability: {15'h0000, 2'b00, 6'b111111, 1'b0, 
                             20'h00000, 20'h11111,
                             64'h0000_0000_0000_0000
                             }
-        };
+        };*/
+        
+Tagged_Capability tc_initial = from129bit(packCap(defaultValue));
 
 Capability cap_null = fv_assemble_cap(
     Capability_Struct {
@@ -253,6 +255,17 @@ function Tagged_Capability offset_tagged_addr (Tagged_Capability old_cap, Addr n
     return Tagged_Capability {
         tag: old_cap.tag,
         capability: new_value
+    };
+endfunction
+
+function Bit#(129) to129Bit(Tagged_Capability tc);
+    return {tc.tag, tc.capability};
+endfunction
+
+function Tagged_Capability from129Bit(Bit#(129) pac);
+    return Tagged_Capability {
+        tag: pac[128],
+        capability: pac[127:0]
     };
 endfunction
 
