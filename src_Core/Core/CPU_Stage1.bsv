@@ -56,7 +56,11 @@ import CPU_Globals      :: *;
 import Near_Mem_IFC     :: *;
 import GPR_RegFile      :: *;
 import CSR_RegFile      :: *;
+`ifdef CHERI
+import EX_ALU_CHERI_functions :: *;
+`else
 import EX_ALU_functions :: *;
+`endif
 
 // ================================================================
 // Interface
@@ -307,6 +311,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	    let data_to_stage2 = Data_Stage1_to_Stage2 {priv:      cur_priv,
 						     pc:         pc,
 						     instr:      instr,
+						     
+						     decoded:    decoded_instr,
+						     
 						     op_stage2:  alu_outputs.op_stage2,
 						     rd:         alu_outputs.rd,
 						     csr_valid:  alu_outputs.csr_valid,
@@ -330,7 +337,6 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	    output_stage1.next_pc        = next_pc;
 	    output_stage1.data_to_stage2 = data_to_stage2;
       end
-
       return output_stage1;
    endfunction: fv_out
 
@@ -346,28 +352,10 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    endmethod
    
    method Action deq ();
-      let data_to_stage2 = fv_out.data_to_stage2;
+      let out = fv_out;
+      let data_to_stage2 = out.data_to_stage2;
+      let trap_info = out.trap_info;
       Bool wrote_csr_minstret = False;
-      /* `ifdef CHERI
-      if (fv_out.control == CONTROL_CLEAR) begin
-         // If we don't have FP support, don't worry about checking it.
-         `ifdef ISA_F
-         if (data_to_stage2.addr.capability[0] == 1'b0) begin
-         `endif
-            gpr_regfile.clear_quarter(
-                    data_to_stage2.val1.capability[1:0],
-                    data_to_stage2.val2.capability[7:0]);
-         `ifdef ISA_F
-         end
-         else begin
-            fpr_regfile.clear_quarter(
-                    data_to_stage2.val1.capability[1:0],
-                    data_to_stage2.val2.capability[7:0]);
-         end
-         `endif
-      end
-      // TODO: do we suppress MINSTRET increment if we write minstret here?
-      else `endif */
       if (data_to_stage2.csr_valid) begin
         `ifdef CHERI
         CSR_Addr csr_addr = truncate (tagged_addr(data_to_stage2.addr));
@@ -392,6 +380,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
             csr_regfile.write_csr_cap (ccsr, new_val);
         end
       end
+      $display("Exception code on instr %h: %h", data_to_stage2.instr, trap_info.exc_code);
       `endif
    endmethod
 
