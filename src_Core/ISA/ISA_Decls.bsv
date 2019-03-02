@@ -31,6 +31,7 @@ package ISA_Decls;
 import DefaultValue :: *;
 import Vector       :: *;
 import BuildVector  :: *;
+import Capability128ccLibs :: *;
 
 // ================================================================
 // BSV project imports
@@ -119,7 +120,7 @@ endfunction
 
 
 typedef 128 CLEN;
-//typedef Bit #(CLEN) Capability;
+typedef Bit #(CLEN) Capability;
 typedef Bit #(5) CapCSR_Addr;
 
 // "Decoded" capability type
@@ -178,7 +179,7 @@ Tagged_Capability tc_pcc_vals =
                             }
         };*/
         
-Tagged_Capability tc_initial = from129bit(packCap(defaultValue));
+Tagged_Capability tc_initial = from129Bit(packCap(defaultValue));
 
 Capability cap_null = fv_assemble_cap(
     Capability_Struct {
@@ -203,6 +204,7 @@ function Capability_Struct fv_disassemble_cap (Capability cap);
             addr:      cap_addr   (cap)
     };
 endfunction
+
 
 function Capability fv_assemble_cap (Capability_Struct cap_s);
     Capability base = {cap_s.uperms, 2'b0, cap_s.exponent, pack(cap_s.sealed), 
