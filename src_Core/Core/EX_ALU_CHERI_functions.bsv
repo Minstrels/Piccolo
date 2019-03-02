@@ -1078,7 +1078,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             end
             else begin
                 Bit #(64) addr = tagged_addr(inputs.rs2_val);
-                CapFat cap = unpackCap(to128Bit(inputs.rs1_val));
+                CapFat cap = unpackCap(to129Bit(inputs.rs1_val));
                 CapFat out = setBounds(cap, addr, False);
                 if (!out.isCapability) begin
                     alu_outputs.control  = CONTROL_TRAP;
@@ -1094,7 +1094,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             end
             else begin
                 Bit #(64) addr = tagged_addr(inputs.rs2_val);
-                CapFat cap = unpackCap(to128Bit(inputs.rs1_val));
+                CapFat cap = unpackCap(to129Bit(inputs.rs1_val));
                 CapFat out = setBounds(cap, addr, True);
                 if (!out.isCapability) begin
                     alu_outputs.control  = CONTROL_TRAP;
