@@ -1178,15 +1178,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         end
         else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin // 0x01
             let ccsr_addr = inputs.decoded_instr.rs2;
-<<<<<<< HEAD
-            Bool addr_valid = fv_check_CapCSR_Addr(ccsr_addr);          // IDx points to a valid register
-            Bool priv_valid = (inputs.cur_priv >= ccsr_addr[4:3]);      // We have the right privilege to access the CCSR
-            Bool perm_valid = unpack(inputs.pcc.capability[123]);       // We have the ACCESS_SPECIAL permission in PCC.
-=======
             Bool addr_valid = fv_check_CapCSR_Addr(ccsr_addr); 
             Bool priv_valid = (inputs.cur_priv >= ccsr_addr[4:3]);
             Bool perm_valid = unpack(inputs.pcc.capability[123]);
->>>>>>> b8930b34b402489df520774f605814811a2f33e0
             Bool all_valid = addr_valid && priv_valid && perm_valid;
             alu_outputs.ccsr_valid = (inputs.decoded_instr.rs1 != 0);
             
