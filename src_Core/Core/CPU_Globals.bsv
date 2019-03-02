@@ -238,6 +238,7 @@ typedef struct {
    Priv_Mode  priv;
    Addr       pc;
    Instr      instr;    // For debugging. Just funct3 is enough for functionality.
+   Decoded_Instr decoded;
    Op_Stage2  op_stage2;
    RegName    rd;
    Bool       csr_valid;
