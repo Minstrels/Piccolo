@@ -77,6 +77,7 @@ typedef struct {
 
    Op_Stage2            op_stage2;
    RegName              rd;
+
    Bool                 csr_valid;
    Bool                 ccsr_valid;
    Bool                 cap_mode;
@@ -107,7 +108,8 @@ ALU_Outputs alu_outputs_base = ALU_Outputs {control:   CONTROL_STRAIGHT,
                         cap_mode:   False,
 					    addr:       ?,
 					    val1:       ?,
-					    val2:       ? };
+					    val2:       ?
+					 };
 
 // ================================================================
 
@@ -1145,27 +1147,26 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 };
         end
         else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin // 0x01
-            // TODO: Are we keeping the base ISA principle that rs1 = 0 => no write?
             let ccsr_addr = inputs.decoded_instr.rs2;
             Bool addr_valid = fv_check_CapCSR_Addr(ccsr_addr);          // IDx points to a valid register
             Bool priv_valid = (inputs.cur_priv >= ccsr_addr[4:3]);      // We have the right privilege to access the CCSR
             Bool perm_valid = unpack(inputs.pcc.capability[123]);       // We have the ACCESS_SPECIAL permission in PCC.
-            $display ("Addr: ", fshow (addr_valid), "; Privilege: ", fshow(priv_valid), "; Perms: ", fshow(perm_valid));
             Bool all_valid = addr_valid && priv_valid && perm_valid;
             alu_outputs.ccsr_valid = (inputs.decoded_instr.rs1 != 0);   // We are writing the CCSR
             // Access/read fault, or trying to write PCC
-            if ((!all_valid) || (ccsr_addr == 0 && alu_outputs.ccsr_valid)) begin
-                $display ("Threw trap in f7_CSPECIALRW");
+            if ((!all_valid) || (ccsr_addr == 0 && (inputs.decoded_instr.rs1 != 0))) begin
                 // Permissions are a capability issue, addressing and privilege fit existing exception paradigms.
                 alu_outputs.exc_code = (perm_valid ? exc_code_CAPABILITY_EXC : exc_code_ILLEGAL_INSTRUCTION);
                 alu_outputs.control = CONTROL_TRAP;
                 alu_outputs.ccsr_valid = False;
+                
+                alu_outputs.val1 = change_tagged_addr(tc_zero,zeroExtend({pack(priv_valid), pack(perm_valid),pack(addr_valid)}));
             end
-            // This is safe - we will have thrown the trap above if not.
-            // Val1 => rd, Val2 => CCSR register
-            alu_outputs.addr = change_tagged_addr(tc_zero,zeroExtend(ccsr_addr));
-            alu_outputs.val1 = inputs.ccsr_val;
-            alu_outputs.val2 = inputs.rs1_val;
+            else begin
+                alu_outputs.addr = change_tagged_addr(tc_zero,zeroExtend(ccsr_addr));
+                alu_outputs.val1 = inputs.ccsr_val;
+                alu_outputs.val2 = inputs.rs1_val;
+            end
         end
         //else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
             
@@ -1187,7 +1188,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             end
             else begin
                 alu_outputs.control  = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
             end
         end
         else begin
@@ -1452,7 +1452,7 @@ function Bool fv_checkRange (Tagged_Capability rs1);
 endfunction
 
 function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
-    Bool base = ((addr == 5'h01) || (addr == 5'h01));
+    Bool base = ((addr == 5'h00) || (addr == 5'h01));
     Bool user = ((addr[4:2] == 3'b001) && addr[1:0] != 2'b01);
     Bool supr = ((addr[4:2] == 3'b011) && addr[1:0] != 2'b01);
     Bool mach = ((addr[4:2] == 3'b111) && addr[1:0] != 2'b01);
