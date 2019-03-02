@@ -29,13 +29,8 @@
 //import Debug::*;
 import DefaultValue::*;
 import MIPS::*;
-//import VnD::*;
+import VnD::*;
 //import Assert::*;
-
-typedef struct {
-    Bool v;
-    ty   d;
-} VnD #(type ty) deriving (Eq, Bits);
 
 `ifdef CAP64
     typedef 0  UPermW;
@@ -93,7 +88,7 @@ typedef struct {
   CapAddress    address;
 } CapabilityInMemory deriving(Bits, Eq, FShow); // CapW + 1 (tag bit)
 // The full capability structure as Bits, including the "tag" bit.
-typedef Bit#(TAdd#(CapW,1)) Capability;
+typedef Bit#(TAdd#(CapW,1)) Capability129;
 // not including the tag bit
 typedef Bit#(CapW) CapBits;
 typedef Bit#(128) ShortCap;
@@ -159,7 +154,7 @@ CapFat defaultCapFat = defaultValue;
 typedef Bit#(6) CapReg;
 
 // unpack a memory representation of the capability
-function CapFat unpackCap(Capability thin);
+function CapFat unpackCap(Capability129 thin);
     CapabilityInMemory memCap = unpack(thin);
     // extract the fields from the memory capability
     CapFat fat = defaultValue;
@@ -182,7 +177,7 @@ function CapFat unpackCap(Capability thin);
 endfunction
 
 // pack the fat capability into the memory representation
-function Capability packCap(CapFat fat);
+function Capability129 packCap(CapFat fat);
   CapabilityInMemory thin = CapabilityInMemory{
       isCapability: fat.isCapability,
       perms: fat.perms,
@@ -337,8 +332,9 @@ function Bit#(n) smearMSBRight(Bit#(n) x);
     return res;
 endfunction
 
-function ActionValue#(CapFat) setBounds(CapFat cap, Address lengthFull, Bool exact) =
-    actionvalue
+//function ActionValue#(CapFat) setBounds(CapFat cap, Address lengthFull, Bool exact) =
+//    actionvalue
+function CapFat setBounds(CapFat cap, Address lengthFull, Bool exact);
         //debug2("cap", $display("SETBOUNDS --- initial cap ", fshow(cap)));
         //debug2("cap", $display("SETBOUNDS --- length 0x%x", lengthFull));
         //debug2("cap", $display("SETBOUNDS --- is exact 0b%b", exact));
@@ -443,7 +439,8 @@ function ActionValue#(CapFat) setBounds(CapFat cap, Address lengthFull, Bool exa
         // Return derived capability
         //debug2("cap", $display("SETBOUNDS --- returning ", fshow(ret)));
         return ret;
-    endactionvalue;
+    //endactionvalue;
+endfunction
 function ActionValue#(CapFat) seal(CapFat cap, TempFields tf, CType otype) =
     actionvalue
         CapFat ret = cap;
