@@ -16,5 +16,5 @@ research group.
 
 This work is intended as part of my examination for Part II of the Computer Science
 Tripos. All contributions and copyright should be identified at the top of any
-relevant files, or in commit logs for the Bluespec, CTSRD and my own repository for
-Piccolo.
+relevant files, or in commit logs for the various repositories (Bluespec, CTSRD and
+my own).
