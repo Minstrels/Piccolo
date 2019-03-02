@@ -48,12 +48,6 @@ import CPU_Globals :: *;
 // ================================================================
 // ALU inputs
 
-`ifdef CHERI
-
-import EX_ALU_CHERI_functions :: *;
-
-`else
-
 typedef struct {
    Priv_Mode      cur_priv;
    Addr           pc;
@@ -935,7 +929,5 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
 endfunction
 
 // ================================================================
-
-`endif
 
 endpackage
