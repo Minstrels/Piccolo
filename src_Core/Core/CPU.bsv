@@ -740,7 +740,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(True,epc,next_pc,new_mstatus,mcause,True,instr);
       f_to_verifier.enq (to_verifier);
 `elsif RVFI
-      $display("next_pc: %h, trap, instr: %h", next_pc, instr);]
+      $display("next_pc: %h, trap, instr: %h", next_pc, instr);
       let outpacket = getRVFIInfoCondensed(stage2.out.data_to_stage3, next_pc,
                                 rg_inum, True, exc_code, rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;

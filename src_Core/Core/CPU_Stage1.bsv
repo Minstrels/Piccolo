@@ -56,10 +56,6 @@ import CPU_Globals      :: *;
 import Near_Mem_IFC     :: *;
 import GPR_RegFile      :: *;
 import CSR_RegFile      :: *;
-<<<<<<< HEAD
-=======
-
->>>>>>> b8930b34b402489df520774f605814811a2f33e0
 `ifdef CHERI
 import EX_ALU_CHERI_functions :: *;
 `else
