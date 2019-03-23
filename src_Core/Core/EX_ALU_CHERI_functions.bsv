@@ -1181,7 +1181,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.val1 = Tagged_Capability {
                     tag:        cs.tag,
                     capability: {cs.capability[127:64], ct.capability[63:0]}
-                }
+                };
         end
         else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin // 0x01
             let ccsr_addr = inputs.decoded_instr.rs2;
@@ -1450,7 +1450,7 @@ function Bit #(65) fv_getTop  (Tagged_Capability tc);
     Bit #(65) result = zeroExtend(pack(unpack(tc.capability[63:20+e]) + fv_topCorrection(tc.capability[63:0],unpack(b),unpack(t),e)) << 20 + e);
     Bit #(65) t_val = zeroExtend(t << e);
     result = result + t_val;
-    return zeroExtend(pack(e));
+    return result;
 endfunction
 
 function Bit #(64) fv_getLen(Tagged_Capability tc);
@@ -1481,20 +1481,22 @@ function Bool fv_checkValid_Execute (Tagged_Capability rs1);
 endfunction
 
 function Bool fv_checkRange_JALR (Tagged_Capability rs1);
-    Bit #(64) base   = fv_getBase(rs1);
-    Bit #(64) top    = fv_getTop (rs1);
+    Bit #(64) base   = fv_getBase(rs1)[63:0];
+    Bit #(64) top    = fv_getTop (rs1)[63:0];
     Bit #(64) addr   = rs1.capability[63:0];
+    Bool out = True;
     if (((addr + 4) > top) || (addr < base)) // Bounds violation
-        return False;
-    return True;
+        out = False;
+    return out;
 endfunction
 
 function Bool fv_checkRange_other (Tagged_Capability rs1, Bit# (64) addr);
-    Bit #(64) base   = fv_getBase(rs1);
-    Bit #(64) top    = fv_getTop (rs1);
+    Bit #(64) base   = fv_getBase(rs1)[63:0];
+    Bit #(64) top    = fv_getTop (rs1)[63:0];
+    Bool out = True;
     if ((addr >= top) || (addr < base)) // Bounds violation
-        return False;
-    return True;
+        out = False;
+    return out;
 endfunction
 
 
@@ -1506,12 +1508,13 @@ function Bool fv_checkRange_simplified (Tagged_Capability rs1);
 endfunction
 
 function Bool fv_checkRange (Tagged_Capability rs1);
-    Bit #(64) base   = fv_getBase(rs1);
-    Bit #(64) top    = fv_getTop (rs1);
+    Bit #(64) base   = fv_getBase(rs1)[63:0];
+    Bit #(64) top    = fv_getTop (rs1)[63:0];
+    Bool out = True;
     Bit #(64) addr   = rs1.capability[63:0];
     if ((addr >= top) || (addr < base)) // Bounds violation
-        return False;
-    return True;
+        out = False;
+    return out;
 endfunction
 
 function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
