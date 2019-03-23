@@ -148,7 +148,56 @@ BSC_FLAGSGDB += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D CSR_REGFILE_UM \
 		-D INCLUDE_GDB_CONTROL\
 		-D Near_Mem_Caches \
+		+RTS -K64M -RTS  -show-range-conflict
+		
+BSC_CHERIFLAGS += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
+		-suppress-warnings G0020 \
+		-D RV64 \
 		-D FABRIC64 \
+		-D SV39 \
+		-D ISA_PRIV_M \
+		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
+		-D Near_Mem_Caches \
+		-D SHIFT_BARREL \
+		-D CSR_REGFILE_UM \
+		-D CHERI \
+		+RTS -K64M -RTS  -show-range-conflict
+		
+		
+BSC_CHERISIMS += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
+		-suppress-warnings G0020 \
+		-D RV64 \
+		-D FABRIC64 \
+		-D SV39 \
+		-D ISA_PRIV_M \
+		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
+		-D SHIFT_BARREL \
+		-D CSR_REGFILE_UM \
+		-D Near_Mem_Caches \
+		-D CHERI\
+		+RTS -K64M -RTS  -show-range-conflict
+		#-D INCLUDE_GDB_CONTROL\
+		
+BSC_CHERIV += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
+		-suppress-warnings G0020 \
+		-D RV64 \
+		-D FABRIC64 \
+		-D SV39 \
+		-D ISA_PRIV_M \
+		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
+		-D ISA_M \
+		-D ISA_A \
+		-D Near_Mem_Caches \
+		-D SHIFT_BARREL \
+		-D MULT_SERIAL\
+		-D CSR_REGFILE_UM \
+		-D CHERI \
+		-D CHERIDEBUG \
+		-D RVFI \
+		-D RVFI_DII \
 		+RTS -K64M -RTS  -show-range-conflict
 
 # ================================================================
@@ -167,6 +216,10 @@ TMP_LOGIF = -bdir bv64 -simdir bv64 -info-dir bv64 -vdir bv64
 
 TMP_GDBV = -bdir gdbv -simdir gdbv -info-dir gdbv -vdir gdbv
 TMP_GDB = -bdir gdb -simdir gdb -info-dir gdb -vdir gdb
+
+TMP_CHERI = -bdir cherib -simdir cherib -info-dir cherib -vdir cherib
+TMP_CHERISIM = -bdir cherisim -simdir cherisim -info-dir cherisim -vdir cherisim
+TMP_CHERIV = -bdir cheriv -simdir cheriv -info-dir cheriv -vdir cheriv
 
 .PHONY: sim32
 sim32:
@@ -217,21 +270,6 @@ bF64:
 	bsc -u -elab -verilog -D VERILOG $(USEFUL_FLAGS) $(TMP_64FDIRS) $(BSC_FLAGS64) -D ISA_F -D ISA_D $(BSC_PATH) ../src_Core/Core/CPU.bsv
 	@echo "INFO: Compiled 64-bit CPU to verilog"
 
-.PHONY: simV64
-simV64:
-	@echo "INFO: Compiling 64-bit CPU with Verifier attachments"
-	mkdir -p  simv64
-	bsc -u -elab -sim -D SIM $(TMP_VERIF64) $(BSC_FLAGS64VERIF)  $(BSC_PATH)  $(TOPFILE)
-	@echo "INFO: Compilation completed"
-	@echo "INFO: linking bsc-compiled objects into Bluesim executable"
-	CC=gcc-4.8 CXX=g++-4.8 bsc -sim -parallel-sim-link 8 \
-		$(TMP_VERIF64) \
-		-e $(RVFI_DII_TOPMODULE) -o ./$(BSIM_EXE_FV64) \
-		$(BSC_C_FLAGS)\
-		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c \
-		$(REPO)/src_Verifier/BSV-RVFI-DII/SocketPacketUtils/socket_packet_utils.c
-	@echo "INFO: linked bsc-compiled objects into Bluesim executable"
-
 .PHONY: simV32
 simV32:
 	@echo "INFO: Compiling 32-bit CPU with Verifier attachments"
@@ -275,6 +313,57 @@ bD64:
 	mkdir -p gdbv
 	bsc -u -elab -verilog $(USEFUL_FLAGS) $(TMP_GDBV) $(BSC_FLAGSGDB) $(BSC_PATH) ../src_Core/Core/CPU.bsv
 	@echo "INFO: Compilation completed"
+	
+.PHONY: cheri
+cheri:
+	@echo "INFO: Compiling CHERI..."
+	mkdir -p cherib
+	bsc -u -elab -verilog $(USEFUL_FLAGS) $(TMP_CHERI) $(BSC_CHERIFLAGS) $(BSC_PATH) ../src_Core/Core/CPU.bsv
+	@echo "INFO: Compilation completed"
+
+
+.PHONY: cherisim
+cherisim:
+	@echo "INFO: Compiling CHERI for simulation"
+	mkdir -p cherisim
+	bsc -u -elab -sim -D SIM $(USEFUL_FLAGS) $(TMP_CHERISIM) $(BSC_CHERISIMS) $(BSC_PATH) $(TOPFILE)
+	@echo "INFO: Compilation completed, starting linking"
+	bsc -sim -parallel-sim-link 8 \
+		$(TMP_CHERISIM)\
+		-e $(TOPMODULE) -o ./$(BSIM_EXE_CHERI) \
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c
+	@echo "INFO: linked CHERI objects into Bluesim executable"
+	
+.PHONY: simV64
+simV64:
+	@echo "INFO: Compiling 64-bit CPU with Verifier attachments"
+	mkdir -p  simv64
+	bsc -u -elab -sim -D SIM $(TMP_VERIF64) $(BSC_FLAGS64VERIF)  $(BSC_PATH)  $(TOPFILE)
+	@echo "INFO: Compilation completed"
+	@echo "INFO: linking bsc-compiled objects into Bluesim executable"
+	CC=gcc-4.8 CXX=g++-4.8 bsc -sim -parallel-sim-link 8 \
+		$(TMP_VERIF64) \
+		-e $(RVFI_DII_TOPMODULE) -o ./$(BSIM_EXE_FV64) \
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c \
+		$(REPO)/src_Verifier/BSV-RVFI-DII/SocketPacketUtils/socket_packet_utils.c
+	@echo "INFO: linked bsc-compiled objects into Bluesim executable"
+
+	
+.PHONY: cheriV
+cheriV:
+	@echo "INFO: Compiling CHERI RVFI for simulation"
+	mkdir -p cheriv
+	bsc -u -elab -sim -D SIM $(USEFUL_FLAGS) $(TMP_CHERIV) $(BSC_CHERIV) $(BSC_PATH) $(TOPFILE)
+	@echo "INFO: Compilation completed, starting linking"
+	CC=gcc-4.8 CXX=g++-4.8 bsc -sim -parallel-sim-link 8 \
+		$(TMP_CHERIV)\
+		-e $(RVFI_DII_TOPMODULE) -o ./$(BSIM_EXE_CHERIV) \
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c \
+		$(REPO)/src_Verifier/BSV-RVFI-DII/SocketPacketUtils/socket_packet_utils.c
+	@echo "INFO: linked CHERI objects into Bluesim executable"
 
 
 BSIM_EXE_FILE = exe_HW_bsim
@@ -282,6 +371,8 @@ BSIM_EXE_FILE64 = exe_HW_bsim64
 BSIM_EXE_FV64 = exe_HW_vs64
 BSIM_EXE_FV32 = exe_HW_vs32
 BSIM_EXE_FILEGDB = exe_GDB
+BSIM_EXE_CHERI = exe_CHERI
+BSIM_EXE_CHERIV = exe_CHERIV
 
 BSC_C_FLAGS += \
 	-Xc++  -D_GLIBCXX_USE_CXX11_ABI=0 \
@@ -310,7 +401,7 @@ clean:
 	rm -r -f  *~  build
 	rm -rf buildv
 	rm -rf buildsoc
-	rm -rf sim32 sim64 b32 b64 simv64 bv64 gdbv gdb simv32
+	rm -rf sim32 sim64 b32 b64 simv64 bv64 gdbv gdb simv32 cherib cheriv cherisim rvfib
 	rm -f $(addprefix $(BSIM_EXE_FILE), *) $(addprefix $(BSIM_EXE_FILE64), *) $(addprefix $(BSIM_EXE_FV64), *) $(addprefix $(BSIM_EXE_FV32), *) $(addprefix $(BSIM_EXE_FILEGDB), *)
 	rm -f Mem.hex 
 

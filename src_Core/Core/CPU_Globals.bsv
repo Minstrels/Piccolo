@@ -117,9 +117,15 @@ function Tuple2 #(Bool, Tagged_Capability) fn_gpr_bypass (Bypass bypass, RegName
 function Tuple2 #(Bool, Word) fn_gpr_bypass (Bypass bypass, RegName rd, Word rd_val);
 `endif
    Bool busy = ((bypass.bypass_state == BYPASS_RD) && (bypass.rd == rd));
+`ifdef CHERI
+   Tagged_Capability val  = (  ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
+		? bypass.rd_val
+		: rd_val);
+`else
    Word val  = (  ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
 		? bypass.rd_val
 		: rd_val);
+`endif
    return tuple2 (busy, val);
 endfunction
 
@@ -163,11 +169,11 @@ typedef struct {
    Trap_Info              trap_info;
 
    // feedback
+   // TODO: We only need one of these, but it requires restructuring work!
 `ifdef CHERI
    Tagged_Capability      next_pcc;
-`else
-   WordXL                 next_pc;
 `endif
+   WordXL                 next_pc;
 
    // feedforward data
    Data_Stage1_to_Stage2  data_to_stage2;
@@ -232,9 +238,13 @@ typedef struct {
    Priv_Mode  priv;
    Addr       pc;
    Instr      instr;    // For debugging. Just funct3 is enough for functionality.
+   Decoded_Instr decoded;
    Op_Stage2  op_stage2;
    RegName    rd;
    Bool       csr_valid;
+`ifdef CHERIDEBUG
+   Bit#(64)   debug_out;
+`endif
 `ifdef CHERI
    Bool       ccsr_valid;
    Tagged_Capability addr;
@@ -345,11 +355,17 @@ typedef struct {
 
    Bool      rd_valid;
    RegName   rd;
-   Word      rd_val;
 
    Bool      csr_valid;
    CSR_Addr  csr;
+   
+`ifdef CHERI
+   Tagged_Capability      rd_val;
+   Tagged_Capability      csr_val;
+`else
+   Word      rd_val;
    Word      csr_val;
+`endif
    
 `ifdef RVFI
    Data_RVFI_Stage2 info_RVFI_s2;
@@ -389,6 +405,19 @@ typedef struct {
    Bypass         bypass;
    } Output_Stage3
 deriving (Bits);
+
+`ifdef CHERI
+// TODO: FPClear?
+function Bool instr_is_clear(Instr ins);
+    //opcode 0x5b, f3 0, and f7 0x7f.
+    return (
+            (instr_opcode(ins) == op_CAP) && 
+            (instr_funct3(ins) == 3'b000) &&
+            ((instr_rs2(ins)   == 5'hd) || (instr_rs2(ins) == 5'h10)) &&
+            (instr_funct7(ins) == f7_CAPINSPECT)
+           );
+endfunction
+`endif
 
 instance FShow #(Output_Stage3);
    function Fmt fshow (Output_Stage3 x);

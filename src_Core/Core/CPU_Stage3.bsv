@@ -96,21 +96,39 @@ module mkCPU_Stage3 #(Bit #(4)         verbosity,
 
    // ----------------
    // Combinational output function
-
    function Output_Stage3 fv_out;
       return Output_Stage3 {ostatus: (rg_full ? OSTATUS_PIPE : OSTATUS_EMPTY),
 			    bypass:  Bypass {bypass_state: ((rg_full && rg_stage3.rd_valid)
 							    ? BYPASS_RD_RDVAL
 							    : BYPASS_RD_NONE),
 					     rd:           rg_stage3.rd,
-					     rd_val:       rg_stage3.rd_val }};
+					     rd_val:       rg_stage3.rd_val }/*
+			    `ifdef CHERI
+			    , fn_clear: instr_is_clear(rg_stage3.instr)
+			    `endif*/
+					     };
    endfunction
 
    // ----------------
    // Actions on 'deq': writeback Rd and CSR
-
    function Action fa_deq;
       action
+      /*
+      `ifdef CHERI
+	 if (instr_is_clear(rg_stage3.instr)) begin
+	    let clearinfo = tagged_addr(rg_stage3.rd_val)[9:0];
+	 `ifdef ISA_F
+	    if (instr_rs2(rg_stage3.instr) == 5'hd) begin // GPR
+	 `endif
+	    gpr_regfile.clear_quarter(clearinfo[9:8],clearinfo[7:0]);
+	 `ifdef ISA_F
+	    end else begin //FPR
+	    fpr_regfile.clear_quarter(clearinfo[9:8],clearinfo[7:0]);
+	    end
+	 `endif
+	 end
+	 else
+	 `endif*/
 	 // Writeback Rd if valid
 	 if (rg_stage3.rd_valid) begin
 	    gpr_regfile.write_rd (rg_stage3.rd, rg_stage3.rd_val);

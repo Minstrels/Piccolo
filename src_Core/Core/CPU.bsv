@@ -147,6 +147,10 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    IMem_IFC fake_imem = rvfi_bridge.insr_CPU;
 `endif
 
+/* `ifdef CHERI
+   Reg #(Bool) clear_stall <- mkReg(False);
+`endif*/ 
+
    // ----------------
    // For debugging
 
@@ -267,7 +271,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
     Reg   #(Bool)                  rg_handler    <- mkReg (False);
     Reg   #(Bool)                  rg_donehalt       <- mkReg (False);    
     
-    Reg #(MIP) rg_prev_mip <- mkRegU;
+    Reg #(MIP) rg_prev_mip <- mkConfigRegU;
     
 `endif
 
@@ -444,14 +448,14 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       rg_self_stop_req <= False;
 `endif
 
-      $display ("================================================================");
+      /*$display ("================================================================");
       $write   ("CPU: Bluespec  RISC-V  Piccolo  v3.0");
       if (rv_version == RV32)
 	 $display (" (RV32)");
       else
 	 $display (" (RV64)");
       $display ("Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved.");
-      $display ("================================================================");
+      $display ("================================================================");*/
 
       gpr_regfile.server_reset.request.put (?);
 `ifdef ISA_F
@@ -603,12 +607,15 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
         Bool stage2_full = (stage2.out.ostatus != OSTATUS_EMPTY);
         Bool stage1_full = (stage1.out.ostatus != OSTATUS_EMPTY);
         
-        //$display("PIPELINE: S1 %s, S2 %s, S3 %s", getString(stage1_full), 
-        //                        getString(stage2_full), getString(stage3_full));
-
+        /* `ifdef CHERI
+        // We will stall next if we were stalled previously and we're not 
+        // about to commit the clear in question.
+        Bool next_is_stall = (clear_stall && !stage3.out.fn_clear);
+        `endif*/ 
+        
         // ----------------
         // Stage3 sink (does regfile writebacks)
-
+        
         if (stage3.out.ostatus == OSTATUS_PIPE) begin
 	        stage3.deq; 
 	        stage3_full = False;
@@ -646,6 +653,12 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	  && (! (stage1_is_csrrx && (   (stage2.out.ostatus != OSTATUS_EMPTY)
 				     || (stage3.out.ostatus != OSTATUS_EMPTY)))))
 	 begin
+	 /*`ifdef CHERI
+	    // Initiate stall if we see a clear instruction.
+	    if (instr_is_clear(stage1.out.data_to_stage2.instr)) begin
+	        next_is_stall = True;
+	    end
+	 `endif*/
 	    stage1.deq;                              stage1_full = False;
 	    stage2.enq (stage1.out.data_to_stage2);  stage2_full = True;
 	 end
@@ -656,6 +669,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       if ((! halting)
 	  && (! stage1_full))
 	 begin
+	    // TODO: Do we need to stall for any capability CSRs? 
 	    if (stage1_is_csrrx) begin
 	       // Delay for a clock if Stage1 is CSRRx, since fa_start_ifetch reads some
 	       // CSRs, which may be stale w.r.t. CSRRx
@@ -663,12 +677,18 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	       //       i.e., csr_satp/csr_mstatus/csr_sstatus?
 	       rg_state <= CPU_CSRRX_STALL;
 	    end
-	    else begin
+	    else
+	    /*`ifdef CHERI
+	    if (!next_is_stall)
+	    `endif*/
+	    begin
 	       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, False);
 	       stage1_full = True;
 	    end
 	 end
-
+	 /*`ifdef CHERI
+	 clear_stall <= next_is_stall;
+	 `endif*/
       stage3.set_full (stage3_full);
       stage2.set_full (stage2_full);
       stage1.set_full (stage1_full);
@@ -720,7 +740,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(True,epc,next_pc,new_mstatus,mcause,True,instr);
       f_to_verifier.enq (to_verifier);
 `elsif RVFI
-      $display("next_pc: %h, trap", next_pc);
+      $display("next_pc: %h, trap, instr: %h", next_pc, instr);
       let outpacket = getRVFIInfoCondensed(stage2.out.data_to_stage3, next_pc,
                                 rg_inum, True, exc_code, rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;

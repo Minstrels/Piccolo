@@ -31,6 +31,7 @@ package ISA_Decls;
 import DefaultValue :: *;
 import Vector       :: *;
 import BuildVector  :: *;
+import Capability128ccLibs :: *;
 
 // ================================================================
 // BSV project imports
@@ -139,7 +140,7 @@ deriving (Bits, Eq);
 
 typedef struct {
     Bit #(1)      tag;
-    Capability   capability;
+    Bit #(CLEN)   capability;
     } Tagged_Capability
 deriving (Bits, Eq);
 
@@ -158,13 +159,35 @@ Tagged_Capability tc_null =
             capability: cap_null
         };
 
+// In the reduced model, we don't actually need a top field - we include
+// it for compatibility.
+Tagged_Capability tc_pcc_vals =
+		Tagged_Capability {
+			tag: 1'b1,
+			capability: {15'h7fff, 2'b00, 6'b111111, 1'b0,
+							20'h00000, 20'h11111, 
+							64'h0000_0000_0000_0000
+		    }
+		};
+		
+/*Tagged_Capability tc_initial = 
+        Tagged_Capability {
+            tag: 1'b0,
+            capability: {15'h0000, 2'b00, 6'b111111, 1'b0, 
+                            20'h00000, 20'h11111,
+                            64'h0000_0000_0000_0000
+                            }
+        };*/
+        
+Tagged_Capability tc_initial = from129Bit(packCap(defaultValue));
+
 Capability cap_null = fv_assemble_cap(
     Capability_Struct {
         uperms:     15'b0,
         exponent:   6'b1111_11,
         sealed:     False,
         bottom:     20'b0,
-        top:        20'bfffff,
+        top:        20'hfffff,
         otype:      24'b0,
         addr:       64'b0
     }
@@ -182,6 +205,7 @@ function Capability_Struct fv_disassemble_cap (Capability cap);
     };
 endfunction
 
+
 function Capability fv_assemble_cap (Capability_Struct cap_s);
     Capability base = {cap_s.uperms, 2'b0, cap_s.exponent, pack(cap_s.sealed), 
                         cap_s.bottom, cap_s.top, cap_s.addr};
@@ -192,16 +216,19 @@ function Capability fv_assemble_cap (Capability_Struct cap_s);
     return base;
 endfunction
 
-function Bit #(15) cap_uperms (Capability x); return x [127:113];       endfunction
-function Bit #(15) cap_exp    (Capability x); return x [110:105];       endfunction
-function Bool      cap_sealed (Capability x); return unpack(x[104]);    endfunction
-function Bit #(64) cap_addr   (Capability x); return x [63:0];          endfunction
+function Bit #(15) cap_uperms  (Capability x); return x [127:113];       endfunction
+function Bit #(6)  cap_exp     (Capability x); return x [110:105];       endfunction
+function Bool      cap_sealed  (Capability x); return unpack(x[104]);    endfunction
+function Bit #(64) cap_addr    (Capability x); return x [63:0];          endfunction
+function Bit #(64) tagged_addr (Tagged_Capability x); 
+    return cap_addr(x.capability); 
+endfunction
 
-function Bit #(15) cap_bottom    (Capability x); 
+function Bit #(20) cap_bottom    (Capability x); 
     return cap_sealed(x) ? {x[103:96], 12'b0} : x[103:84];
 endfunction
 
-function Bit #(15) cap_top    (Capability x); 
+function Bit #(20) cap_top    (Capability x); 
     return cap_sealed(x) ? {x[83:76], 12'b0} : x[83:64];
 endfunction
 
@@ -229,6 +256,26 @@ function Tagged_Capability increment_tagged_addr (Tagged_Capability old_cap, Bit
     return Tagged_Capability {
         tag: old_cap.tag,
         capability: {old_cap.capability[127:64], new_offset}
+    };
+endfunction
+
+function Tagged_Capability offset_tagged_addr (Tagged_Capability old_cap, Addr new_offset);
+    Capability new_value = old_cap.capability;
+    new_value[63:0] = new_value[63:0] + new_offset;
+    return Tagged_Capability {
+        tag: old_cap.tag,
+        capability: new_value
+    };
+endfunction
+
+function Bit#(129) to129Bit(Tagged_Capability tc);
+    return {tc.tag, tc.capability};
+endfunction
+
+function Tagged_Capability from129Bit(Bit#(129) pac);
+    return Tagged_Capability {
+        tag: pac[128],
+        capability: pac[127:0]
     };
 endfunction
 
@@ -282,9 +329,6 @@ Bit #(5) f5_CCLEARTAG   = 5'b01011; // = 0x0b
 Bit #(5) f5_CMOVE       = 5'b01010; // = 0x0a
 
 Bit #(5) f5_CJALR       = 5'b01100; // = 0x0c
-
-Bit #(5) f5_CCHECKPERM  = 5'b00100; // = 0x08
-Bit #(5) f5_CCHECKTYPE  = 5'b00101; // = 0x09
 
 Bit #(5) f5_FASTCLEAR   = 5'b01101; // = 0x0d
 Bit #(5) f5_FPCLEAR     = 5'b10000; // = 0x10

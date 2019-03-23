@@ -69,14 +69,19 @@ function RVFI_DII_Execution #(XLEN) getRVFIInfoCondensed(
         rvfi_rd_addr:   data_s2_s3.rd_valid ? data_s2_s3.rd : 0,
         rvfi_rs1_data:  s1.rs1_data,
         rvfi_rs2_data:  s1.rs2_data,
-        rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : data_s2_s3.rd_val,
         rvfi_pc_rdata:  data_s2_s3.pc,
         rvfi_pc_wdata:  isTrap ? trapPC : s1.pc_wdata,
         rvfi_mem_wdata: s1.mem_wdata,
         rvfi_mem_addr:  s1.mem_addr,
         rvfi_mem_rmask: s2.mem_rmask,
         rvfi_mem_wmask: s2.mem_wmask,
+        `ifdef CHERI
+        rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : tagged_addr(data_s2_s3.rd_val),
+        rvfi_mem_rdata: tagged_addr(data_s2_s3.rd_val)
+        `else
+        rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : data_s2_s3.rd_val,
         rvfi_mem_rdata: data_s2_s3.rd_val
+        `endif
     };
 endfunction : getRVFIInfoCondensed
             

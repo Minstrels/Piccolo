@@ -164,7 +164,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 						    rd:        rg_stage2.rd,
 						    rd_val:    rg_stage2.val1,
 						    csr_valid: rg_stage2.csr_valid,
+`ifdef CHERI
+						    csr:       truncate (tagged_addr(rg_stage2.addr)),
+`else
 						    csr:       truncate (rg_stage2.addr),
+`endif
 						    csr_val:   rg_stage2.val2
 `ifdef RVFI
 						    ,info_RVFI_s2: info_RVFI_s2_base
@@ -173,7 +177,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
    let  trap_info_dmem = Trap_Info {epc:      rg_stage2.pc,
 				    exc_code: dcache.exc_code,
-				    badaddr:  rg_stage2.addr };
+				    `ifdef CHERI
+				    badaddr:  tagged_addr(rg_stage2.addr) };
+				    `else
+				    badaddr:  rg_stage2.addr};
+				    `endif
 
 `ifdef ISA_FD
    let  trap_info_fbox = Trap_Info {epc:      rg_stage2.pc,
@@ -246,12 +254,20 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	    let data_to_stage3 = data_to_stage3_base;
 	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
+	    `ifdef CHERI
+	    data_to_stage3.rd_val   = change_tagged_addr(tc_zero, result);
+	    `else
 	    data_to_stage3.rd_val   = result;
+	    `endif
 
 	    let bypass = bypass_base;
 	    if (rg_stage2.rd != 0) begin    // TODO: is this test necessary?
 	       bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
+	       `ifdef CHERI
+	       bypass.rd_val       = change_tagged_addr(tc_zero, result);
+	       `else
 	       bypass.rd_val       = result;
+	       `endif
 	    end
 
 `ifdef INCLUDE_TANDEM_VERIF
@@ -266,17 +282,29 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
             ||((rg_stage2.op_stage2 == OP_Stage2_AMO) && (rg_f5 != f5_AMO_SC))
         `endif
         ) begin
+        `ifdef CHERI
+            info_RVFI_s2.mem_rmask = getMemMask(instr_funct3(rg_stage2.instr),tagged_addr(rg_stage2.addr));
+         `else
             info_RVFI_s2.mem_rmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+         `endif
         end
         `ifdef ISA_A
         // If we're doing an AMO that's not an LR, we need to set the write mask as well.
         if (rg_stage2.op_stage2 == OP_Stage2_AMO && rg_f5 != f5_AMO_LR) begin 
             // For most AMOs we can just go ahead and do it
             if (rg_f5 != f5_AMO_SC) begin
+	`ifdef CHERI
+                info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),tagged_addr(rg_stage2.addr));
+	`else
                 info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
-            // For SC however we do need to check that it was successful, otherwise we've not written.
+	`endif            
+// For SC however we do need to check that it was successful, otherwise we've not written.
             end else begin
+`ifdef CHERI
+                info_RVFI_s2.mem_wmask = ((result == 0) ? getMemMask(instr_funct3(rg_stage2.instr),tagged_addr(rg_stage2.addr)) : 0);
+`else
                 info_RVFI_s2.mem_wmask = ((result == 0) ? getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr) : 0);
+`endif
             end
         end
         `endif
@@ -305,9 +333,14 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
 	    data_to_stage3.rd       = 0;
 `ifdef RVFI
-	    data_to_stage3.rd_val   = 0;
 	    let info_RVFI_s2 = info_RVFI_s2_base;
+    `ifdef CHERI
+	    data_to_stage3.rd_val   = tc_zero;
+        info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr), tagged_addr(rg_stage2.addr));
+    `else
+	    data_to_stage3.rd_val   = 0;
         info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+	`endif
         data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `else
 	    data_to_stage3.rd_val   = ?;
@@ -365,11 +398,18 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	    let data_to_stage3 = data_to_stage3_base;
 	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
+`ifdef CHERI
+	    data_to_stage3.rd_val   = change_tagged_addr(tc_zero, result);
+`else
 	    data_to_stage3.rd_val   = result;
-
+`endif
 	    let bypass = bypass_base;
 	    bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
+`ifdef CHERI
+	    bypass.rd_val       = change_tagged_addr(tc_zero, result);
+`else
 	    bypass.rd_val       = result;
+`endif
 
 `ifdef INCLUDE_TANDEM_VERIF
 	    let to_verifier = to_verifier_base;
@@ -443,8 +483,12 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	 // If DMem access, initiate it
 `ifdef ISA_A
 	 Bool op_stage2_amo = (x.op_stage2 == OP_Stage2_AMO);
+`ifdef CHERI
+	 Bit #(7) amo_funct7 = tagged_addr(x.val1) [6:0];
+`else
 	 Bit #(7) amo_funct7 = x.val1 [6:0];
-	 rg_f5 <= amo_funct7[6:2];
+`endif	 
+rg_f5 <= amo_funct7[6:2];
 `else
 	 Bool op_stage2_amo = False;
 	 Bit #(7) amo_funct7 = 0;
@@ -471,8 +515,13 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_A
 			amo_funct7,
 `endif
+`ifdef CHERI
+			tagged_addr(x.addr),
+            tagged_addr(x.val2),
+`else
 			x.addr,
 			zeroExtend (x.val2),
+`endif
 			mem_priv,
 			sstatus_SUM,
 			mstatus_MXR,
@@ -482,21 +531,39 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef SHIFT_SERIAL
 	 // If Shifter box op, initiate it
 	 else if (x.op_stage2 == OP_Stage2_SH)
-	    shifter_box.req (unpack (funct3 [2]), x.val1, x.val2);
+	    shifter_box.req (unpack (funct3 [2]),
+        `ifdef CHERI
+            tagged_addr(x.val1), tagged_addr(x.val2)
+        `else
+            x.val1, x.val2
+        `endif
+        );
 `endif
 
 `ifdef ISA_M
 	 // If MBox op, initiate it
 	 else if (x.op_stage2 == OP_Stage2_M) begin
 	    Bool is_OP_not_OP_32 = (x.instr [3] == 1'b0);
-	    mbox.req (is_OP_not_OP_32, funct3, x.val1, x.val2);
+	    mbox.req (is_OP_not_OP_32, funct3, 
+        `ifdef CHERI
+            tagged_addr(x.val1), tagged_addr(x.val2)
+        `else
+            x.val1, x.val2
+        `endif
+        );
 	 end
 `endif
 
 `ifdef ISA_FD
 	 // If FBox op, initiate it
 	 else if (x.op_stage2 == OP_Stage2_FD)
-	    fbox.req (funct3, x.val1, x.val2);
+	    fbox.req (funct3,
+        `ifdef CHERI
+            tagged_addr(x.val1), tagged_addr(x.val2)
+        `else
+            x.val1, x.val2
+        `endif
+        );
 `endif
       endaction
    endfunction

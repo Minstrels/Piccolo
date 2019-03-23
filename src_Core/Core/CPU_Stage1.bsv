@@ -56,7 +56,11 @@ import CPU_Globals      :: *;
 import Near_Mem_IFC     :: *;
 import GPR_RegFile      :: *;
 import CSR_RegFile      :: *;
+`ifdef CHERI
+import EX_ALU_CHERI_functions :: *;
+`else
 import EX_ALU_functions :: *;
+`endif
 
 // ================================================================
 // Interface
@@ -102,6 +106,10 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
    Reg #(Bool) rg_full  <- mkReg (False);
 
+`ifdef CHERI
+   Reg #(Tagged_Capability) rg_ddc <- mkReg(tc_pcc_vals);
+`endif
+
    // ----------------------------------------------------------------
    // BEHAVIOR
 
@@ -117,12 +125,15 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
    function Output_Stage1 fv_out;
       // TODO: How are we handling memory changes? Where will PCC be derived instead of PC?
-   `ifdef CHERI
-      let pcc           = ?;
-      let pc            = pcc.capability[63:0];
-   `else
+      // TODO: Discuss this. We could pass PCC capability bits all the way out to the icache and back, but is there a better way to do it?
       let pc            = icache.pc;
-   `endif
+      // TODO: PCC is read-only except for internal manipulation. Are there any cases where we change permissions or bounds on PCC?
+      //       If not, we can simply keep upper bits of PCC as a static value (at compile time?) and then only need to pass the standard 
+      //       program counter in cache interactions.
+`ifdef CHERI
+      let pcc = change_tagged_addr(tc_pcc_vals, pc);
+`endif
+      
       let instr         = icache.instr;
       let decoded_instr = fv_decode (instr);
       let funct3        = decoded_instr.funct3;
@@ -135,7 +146,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       match { .busy1b, .rs1b } = fn_gpr_bypass (bypass_from_stage2, rs1, rs1a);
       Bool rs1_busy = (busy1a || busy1b);
       `ifdef CHERI
-      Tagged_Capability rs1_val_bypassed = ((rs1 == 0) ? 0 : rs1b);
+      Tagged_Capability rs1_val_bypassed = ((rs1 == 0) ? tc_zero : rs1b);
       `else
       Word rs1_val_bypassed = ((rs1 == 0) ? 0 : rs1b);
       `endif
@@ -147,7 +158,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       match { .busy2b, .rs2b } = fn_gpr_bypass (bypass_from_stage2, rs2, rs2a);
       Bool rs2_busy = (busy2a || busy2b);
       `ifdef CHERI
-      Tagged_Capability rs2_val_bypassed = ((rs2 == 0) ? 0 : rs2b);
+      Tagged_Capability rs2_val_bypassed = ((rs2 == 0) ? tc_zero : rs2b);
       `else
       Word rs2_val_bypassed = ((rs2 == 0) ? 0 : rs2b);
       `endif
@@ -177,14 +188,19 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 		       && (! csr_write_fault));
 
         let csr_val   = fromMaybe (?, m_csr_val);
-        let ccsr_val  = (rs2 == 0) ? pcc : csr_regfile.read_csr_cap(rs2));
+`ifdef CHERI
+        let ccsr_val  = (rs2 == 0) ? pcc :
+                        (rs2 == 1) ? rg_ddc :
+                        csr_regfile.read_csr_cap(rs2);
+`endif
 
         // ALU function
-        // TODO: PCC vs PC?
+        // TODO: Derive DDC value correctly.
         let alu_inputs = ALU_Inputs {
                    cur_priv:       cur_priv,
                    `ifdef CHERI
                    pcc:            pcc,
+                   ddc:            rg_ddc,
                    `else
 				   pc:             pc,
                    `endif
@@ -202,7 +218,6 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 				   misa:           csr_regfile.read_misa};
 
       let alu_outputs = fv_ALU (alu_inputs);
-
       Output_Stage1 output_stage1 = ?;
 
       // This stage is empty
@@ -248,42 +263,67 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 			: OSTATUS_NONPIPE);
 
 	 // TODO: change name 'badaddr' to 'tval'
-	    let badaddr = 0;
+	    let badaddr = 64'b0;
 	    if (alu_outputs.exc_code == exc_code_ILLEGAL_INSTRUCTION)
 	        badaddr = zeroExtend (instr);
 	    else if (alu_outputs.exc_code == exc_code_INSTR_ADDR_MISALIGNED)
+	    `ifdef CHERI
+	        badaddr = tagged_addr(alu_outputs.addr);    // branch target pc
+	    `else
 	        badaddr = alu_outputs.addr;    // branch target pc
+	    `endif
 	    let trap_info = Trap_Info {epc:      pc,
 				    exc_code: alu_outputs.exc_code,
 				    badaddr:  badaddr};  // v1.10 - mtval
 `ifdef CHERI
         let next_pcc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : change_tagged_addr(pcc,pc+4));
-`endif
+	    let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? tagged_addr(alu_outputs.addr) : pc + 4);
+`else
 	    let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : pc + 4);
+`endif
 `ifdef RVFI
 	    let info_RVFI = Data_RVFI_Stage1 {
 	                        instr:          instr,
 	                        rs1_addr:       rs1,
 	                        rs2_addr:       rs2,
-	                        rs1_data:       rs1_val_bypassed,
-	                        rs2_data:       rs2_val_bypassed,
-	                        pc_rdata:       pc,
-	                        pc_wdata:       next_pc,
-	                        mem_wdata:      alu_outputs.val2,
 	                        rd_addr:        alu_outputs.rd,
 	                        rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
+	                        pc_rdata:       pc,
+                            `ifdef CHERI
+	                        rs1_data:       tagged_addr(rs1_val_bypassed),
+	                        rs2_data:       tagged_addr(rs2_val_bypassed),
+	                        pc_wdata:       tagged_addr(next_pcc),
+	                        mem_wdata:      tagged_addr(alu_outputs.val2),
+	                        rd_wdata_alu:   tagged_addr(alu_outputs.val1),
+	                        mem_addr:       ((alu_outputs.op_stage2 == OP_Stage2_LD) || (alu_outputs.op_stage2 == OP_Stage2_ST))
+                                                ? tagged_addr(alu_outputs.addr) : 0
+                            `else
+	                        rs1_data:       rs1_val_bypassed,
+	                        rs2_data:       rs2_val_bypassed,
+	                        pc_wdata:       next_pc,
+	                        mem_wdata:      alu_outputs.val2,
 	                        rd_wdata_alu:   alu_outputs.val1,
 	                        mem_addr:       ((alu_outputs.op_stage2 == OP_Stage2_LD) || (alu_outputs.op_stage2 == OP_Stage2_ST)) ? alu_outputs.addr : 0
-	                    };
+                            `endif
+                        };
+`endif
+`ifdef CHERIDEBUG
+        //alu_outputs.debug_out = tagged_addr(ccsr_val);
 `endif
 	    let data_to_stage2 = Data_Stage1_to_Stage2 {priv:      cur_priv,
 						     pc:         pc,
 						     instr:      instr,
+						     
+						     decoded:    decoded_instr,
+						     
 						     op_stage2:  alu_outputs.op_stage2,
 						     rd:         alu_outputs.rd,
 						     csr_valid:  alu_outputs.csr_valid,
 `ifdef CHERI
                              ccsr_valid: alu_outputs.ccsr_valid,
+`endif
+`ifdef CHERIDEBUG
+                             debug_out:  alu_outputs.debug_out,
 `endif
 						     addr:       alu_outputs.addr,
 						     val1:       alu_outputs.val1,
@@ -298,12 +338,10 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	    output_stage1.control        = alu_outputs.control;
 `ifdef CHERI
         output_stage1.next_pcc       = next_pcc;
-`else
-	    output_stage1.next_pc        = next_pc;
 `endif
+	    output_stage1.next_pc        = next_pc;
 	    output_stage1.data_to_stage2 = data_to_stage2;
       end
-
       return output_stage1;
    endfunction: fv_out
 
@@ -317,18 +355,18 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    method Output_Stage1 out;
       return fv_out;
    endmethod
-
+   
    method Action deq ();
-      let data_to_stage2 = fv_out.data_to_stage2;
-      // Writeback CSR if valid
-
-      // TODO: do we suppress MINSTRET increment if we write minstret here?
+      let out = fv_out;
+      let data_to_stage2 = out.data_to_stage2;
+      let trap_info = out.trap_info;
       Bool wrote_csr_minstret = False;
       if (data_to_stage2.csr_valid) begin
-        CSR_Addr csr_addr = truncate (data_to_stage2.addr);
         `ifdef CHERI
-        WordXL   csr_val  = data_to_stage2.val2.capability
+        CSR_Addr csr_addr = truncate (tagged_addr(data_to_stage2.addr));
+        WordXL   csr_val  = tagged_addr(data_to_stage2.val2);
         `else
+        CSR_Addr csr_addr = truncate (data_to_stage2.addr);
         WordXL   csr_val  = data_to_stage2.val2;
         `endif
         csr_regfile.write_csr (csr_addr, csr_val);
@@ -336,11 +374,22 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
         if (verbosity > 1)
             $display ("    S1: write CSR 0x%0h, val 0x%0h", csr_addr, csr_val);
       end
+      `ifdef CHERI
       else if (data_to_stage2.ccsr_valid) begin
-        CapCSR_Addr ccsr = truncate (data_to_stage2.addr);
+        CapCSR_Addr ccsr = truncate (tagged_addr(data_to_stage2.addr));
         Tagged_Capability new_val = data_to_stage2.val2;
-        csr_regfile.write_csr_cap (ccsr, new_val);
+        if (ccsr == ccsr_ddc) begin
+            rg_ddc <= new_val;
+        end
+        else begin
+            csr_regfile.write_csr_cap (ccsr, new_val);
+        end
+        //$display("CCSR val: %h", new_val);
       end
+      //$display("Exception code on instr %h: %h", data_to_stage2.instr, trap_info.exc_code);
+      //$display("CCSR val option 2: %h", tagged_addr(data_to_stage2.val1));
+      //$display("Debug out: %h", data_to_stage2.debug_out);
+      `endif
    endmethod
 
    // ---- Input
