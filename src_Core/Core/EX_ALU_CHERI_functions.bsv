@@ -974,8 +974,13 @@ endfunction
 
 function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let alu_outputs = alu_outputs_base;
+    let   cs = inputs.rs1_val;
+    let   ct = inputs.rs2_val;
     if (inputs.decoded_instr.funct3 == 3'b001) begin // CIncOffsetImmediate
-        
+        // TODO: If we don't have the 256-bit capability format we don't need to worry about representing the bounds as
+        // they must be represented in the capability we're incrementing. Do we need to check overflow on the pointer?
+        Bit#(64) imm = signExtend(instr_I_imm12(inputs.instr));
+        alu_outputs.val1 = increment_tagged_addr(cs, imm)
     end
     else if (inputs.decoded_instr.funct3 == 3'b010) begin // CSetBoundsImmediate
         
@@ -985,8 +990,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             return fv_CINSPECT_ETC (inputs);
         end
         else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin // 0x0b
-            let cs = inputs.rs1_val;
-            let ct = inputs.rs2_val;
             if(!fv_checkValid_Seal(cs, ct)) begin
                 alu_outputs.control = CONTROL_TRAP;
                 alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
@@ -996,8 +999,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             end
         end
         else if (inputs.decoded_instr.funct7 == f7_CUNSEAL) begin // 0x0c
-            let cs = inputs.rs1_val;
-            let ct = inputs.rs2_val;
             if(!fv_checkValid_Unseal(cs, ct)) begin
                 alu_outputs.control = CONTROL_TRAP;
                 alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
@@ -1009,45 +1010,44 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         else if (inputs.decoded_instr.funct7 == f7_ANDPERM) begin // 0x0d
             // TODO: Where do we get the permission bits from? Still using the same perms/uperms
             // split as in CHERI-MIPS, or just the 15-bit muperms field in the 128-bit version?
-            if (fv_checkSealed(inputs.rs1_val) || (inputs.rs1_val.tag == 1'b0)) begin
+            if (fv_checkSealed(cs) || (cs.tag == 1'b0)) begin
                 alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
                 alu_outputs.control  = CONTROL_TRAP;
             end
             else begin
-                Bit #(128) newperms = {inputs.rs2_val[14:0], 113'h_1fff_ffff_ffff_ffff_ffff_ffff};
+                Bit #(128) newperms = {ct.capability[14:0], 113'h_1fff_ffff_ffff_ffff_ffff_ffff};
                 alu_outputs.val1 = Tagged_Capability {
                     tag: 1'b1,
-                    capability: (inputs.rs1_val.capability & newperms)
+                    capability: (cs.capability & newperms)
                 };
             end
         end
         else if (inputs.decoded_instr.funct7 == f7_SETOFFSET) begin // 0x0f
-            if (fv_checkSealed(inputs.rs1_val) && (inputs.rs1_val.tag == 1'b1)) begin
+            if (fv_checkSealed(cs) && (cs.tag == 1'b1)) begin
                 alu_outputs.control  = CONTROL_TRAP;
                 alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
             end
             else begin
                 alu_outputs.val1 = Tagged_Capability {
-                    tag: inputs.rs1_val.tag,
-                    capability: {inputs.rs1_val.capability[127:64], inputs.rs2_val.capability[63:0]}
+                    tag: cs.tag,
+                    capability: {cs.capability[127:64], ct.capability[63:0]}
                 };
             end
         end
         else if (inputs.decoded_instr.funct7 == f7_INCOFFSET) begin // 0x11
-            if (fv_checkSealed(inputs.rs1_val) && (inputs.rs1_val.tag == 1'b1)) begin
+            Bit #(64) rs2_v = ct.capability[63:0];
+            if (fv_checkSealed(cs) && (cs.tag == 1'b1) && (rs2_v != 0)) begin
                 alu_outputs.control  = CONTROL_TRAP;
                 alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
             end
             else begin
-                Bit #(64) newOffset = inputs.rs1_val.capability[63:0] + inputs.rs2_val.capability[63:0];
-                alu_outputs.val1 = Tagged_Capability {
-                    tag: inputs.rs1_val.tag,
-                    capability: {inputs.rs1_val.capability[127:64], newOffset};
-                };
+                Bit #(64) new_offset = cs.capability[63:0] + rs2_v;
+                alu_outputs.val1 = increment_tagged_addr(cs, new_offset);
             end
         end
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin // 0x08
-            
+            // cd.bot >= cs.bot, cd.top <= cs.top
+            // cd.bot <= cs.addr, cd.top >= cs.addr + ct.addr - 1
         end
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin // 0x09
             
@@ -1056,10 +1056,25 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             
         end
         else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin // 0x1e
-            
+            if(!fv_checkValid_CopyType(cs,ct)) begin
+                alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            end
+            else if (fv_checkSealed(ct))
+                alu_outputs.val1 = change_tagged_addr(cs, zeroExtend(fv_getOType(ct)));
+            else // TODO: How do we appropriately set the bottom value to -1 in 128-bit representation?
+                alu_outputs.val1 = change_tagged_addr(tc_null, pack(-1));
         end
         else if (inputs.decoded_instr.funct7 == f7_CCSEAL) begin // 0x1f
-            
+            IntXL ctaddr = ct.capability[63:0];
+            if (ct.tag == 1'b0 || ctaddr == (-1))       // Copy condition
+                alu_outputs.val1 = cs;
+            else if (!fv_checkValid_Seal(cs, ct)) begin // Standard sealing checks if not copying
+                alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            end
+            else
+                alu_outputs.val1 = fv_seal(cs, ct)
         end
         else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin // 0x12
             
@@ -1069,8 +1084,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.val1 = tc_null;
             else
                 alu_outputs.val1 = Tagged_Capability {
-                    tag:        inputs.rs1_val.tag,
-                    capability: {inputs.rs1_val.capability[127:64], inputs.rs2_val.capability[63:0]}
+                    tag:        cs.tag,
+                    capability: {cs.capability[127:64], ct.capability[63:0]}
                 }
         end
         else if (inputs.decoded_instr.funct7 == f7_CSPECIALRW) begin // 0x01
@@ -1092,7 +1107,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             // Val1 => rd, Val2 => CCSR register
             alu_outputs.addr = change_tagged_addr(tc_zero,zeroExtend(ccsr_addr));
             alu_outputs.val1 = ccsr_val;
-            alu_outputs.val2 = inputs.rs1_val;
+            alu_outputs.val2 = cs;
         end
         else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
             
@@ -1108,7 +1123,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         alu_outputs.control = CONTROL_TRAP;
     end
     return alu_outputs;
-endfunction
+endfunction : fv_CHERI
 
 // Any operations with opcode 0x5b, f3 0, and f7 0x7f.
 // A number of these don't particularly fit with the general structure presented in the
@@ -1132,7 +1147,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     else if (inputs.decoded_instr.rs2 == f5_CGETTYPE)   begin
         // If sealed capability, return otype, otherwise -1.
         Bit #(64) newVal = fv_checkSealed(inputs.rs1_val) ? 
-                                extend({rs1_cap[95:84], rs1_cap[75:64]}) : 
+                                extend(fv_getOType(inputs.rs1_val)) : 
                                 pack(-1);
         alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
     end
@@ -1172,16 +1187,15 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         // Since we're not using a pointer, we only need to add 4 here.
         UInt #(64) retAddr = unpack(inputs.pcc.capability[63:0]) + 4;
         alu_outputs.val1 = change_tagged_addr(inputs.pcc, retAddr);
-        // TODO: priority of exceptions?
-        alu_outputs.addr = new_pcc;
-        if (!fv_checkValid_Execute (rs1_val)) begin
+        alu_outputs.addr = inputs.rs1_val;
+        if (!fv_checkValid_Execute (inputs.rs1_val)) begin
             alu_outputs.control = CONTROL_TRAP;
             alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
         end
         else begin
             // Other exception remaining is alignment.
             alu_outputs.exc_code = exc_code_INSTR_ADDR_MISALIGNED;
-            alu_outputs.control = ((new_pcc.capability[1:0] == 2'b00) ? CONTROL_BRANCH : CONTROL_TRAP);
+            alu_outputs.control = ((rs1_cap[1:0] == 2'b00) ? CONTROL_BRANCH : CONTROL_TRAP);
         end
     end
     // Comments in the spec suggest check-perm/type might be removed in future.
@@ -1210,7 +1224,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         alu_outputs.control = CONTROL_TRAP;
     end
     return alu_outputs;
-endfunction
+endfunction : fv_CINSPECT_ETC
 
 // ----------------------------------------------------------------
 // CAPABILITY LOAD
@@ -1296,22 +1310,23 @@ function Bit #(64) fv_getTop  (Tagged_Capability tc);
 endfunction
 
 // Bool = trap status, capability = target.
-// This checks capability dereferencing issues (permissions, bounds & sealing).
+// This checks capability dereferencing issues for execution (e.g. JALR).
 function Bool fv_checkValid_Execute (Tagged_Capability rs1);
     Bit #(15) perms  = rs1.capability[127:113];
     Bool      sealed = fv_checkSealed(rs1);
-    if (rs1.tag == 1'b0) // Tag violation
+    if (rs1.tag == 1'b0)                // Tag violation
         return False;
-    if (sealed) // Seal violation
+    else if (sealed)                    // Seal violation
         return False;
-    if (perms[1] == 1'b0) // Permit_Execute violation
+    else if (perms[1] == 1'b0)          // Permit_Execute violation
         return False;
-    if (!fv_checkRange(rs1))
+    else if (!fv_checkRange_JALR(rs1))  // Bounds violation
         return False;
-    return True;
+    else
+        return True;
 endfunction
 
-function Bool fv_checkRange (Tagged_Capability rs1);
+function Bool fv_checkRange_JALR (Tagged_Capability rs1);
     Bit #(64) base   = fv_getBase(rs1);
     Bit #(64) top    = fv_getTop (rs1);
     Bit #(64) addr   = rs1.capability[63:0];
@@ -1320,28 +1335,52 @@ function Bool fv_checkRange (Tagged_Capability rs1);
     return True;
 endfunction
 
+function Bool fv_checkRange (Tagged_Capability rs1);
+    Bit #(64) base   = fv_getBase(rs1);
+    Bit #(64) top    = fv_getTop (rs1);
+    Bit #(64) addr   = rs1.capability[63:0];
+    if ((addr >= top) || (addr < base)) // Bounds violation
+        return False;
+    return True;
+endfunction
+
+function Bool fv_checkRange_other (Tagged_Capability rs1, Bit# (64) addr);
+    Bit #(64) base   = fv_getBase(rs1);
+    Bit #(64) top    = fv_getTop (rs1);
+    if ((addr >= top) || (addr < base)) // Bounds violation
+        return False;
+    return True;
+endfunction
+
 function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
-    Bool base = ((addr == 5'h01) || (addr == 5'h01));
+    Bool base = ((addr == 5'h00) || (addr == 5'h01));
     Bool user = ((addr[4:2] == 3'b001) && addr[1:0] != 2'b01);
     Bool supr = ((addr[4:2] == 3'b011) && addr[1:0] != 2'b01);
     Bool mach = ((addr[4:2] == 3'b111) && addr[1:0] != 2'b01);
     return (base || user || supr || mach);
 endfunction
 
+function Bit#(24) fv_getOType(Tagged_Capability rs1);
+    let rs1_cap = rs1.capability;
+    return {rs1_cap[95:84], rs1_cap[75:64]};
+endfunction
+
 function Bool fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt);
-    if (rs.tag == 0 || rt.tag == 0)                 // Tag violation
+    if (rs.tag == 0 || rt.tag == 0)                      // Tag violation
         return False;
-    if (fv_checkSealed(rs) || fv_checkSealed(rt))   // Sealed violation
+    else if (fv_checkSealed(rs) || fv_checkSealed(rt))   // Sealed violation
         return False;
-    if (rt.capability[120] == 0)                    // Permit_Seal violation
+    else if (rt.capability[120] == 0)                    // Permit_Seal violation
         return False;
-    if (!fv_checkRange(rt))                         // Bounds violation
+    else if (!fv_checkRange(rt))                         // Bounds violation
         return False;
-    if (cap_addr(rt.capability) > ffffff)           // Max_OType violation
+    else if (cap_addr(rt.capability) > ffffff)           // Max_OType violation
         return False;
     // TODO: Is it this straightforward, or could we adjust exponent to compensate slightly?
-    if ((rs.capability[95:84] != 0) || (rs.capability[75:64] != 0)) // Bounds representation violation
-    return True;
+    else if ((rs.capability[95:84] != 0) || (rs.capability[75:64] != 0)) // Bounds representation violation
+        return False;
+    else
+        return True;
 endfunction
 
 function Tagged_Capability fv_seal(Tagged_Capability rs, Tagged_Capability rt);
@@ -1364,16 +1403,18 @@ endfunction
 function Bool fv_checkValid_Unseal(Tagged_Capability rs, Tagged_Capability rt);
     let rsc = rs.capability;
     let rtc = rt.capability;
-    if (rs.tag == 0 || rt.tag == 0)                     // Tag violation
+    if (rs.tag == 0 || rt.tag == 0)                          // Tag violation
         return False;
-    if ((!fv_checkSealed(rs)) || fv_checkSealed(rt))    // Sealed violation
+    else if ((!fv_checkSealed(rs)) || fv_checkSealed(rt))    // Sealed violation
         return False;
-    if ({rsc[95:84], rsc[75:64]} != rtc[23:0])          // OType violation
+    else if ({rsc[95:84], rsc[75:64]} != rtc[23:0])          // OType violation
         return False;
-    if (rtc[122] == 0)                                  // Permit_Unseal violation
+    else if (rtc[122] == 0)                                  // Permit_Unseal violation
         return False;
-    if (!fv_checkRange(rt))                             // Bounds violation
+    else if (!fv_checkRange(rt))                             // Bounds violation
         return False;
+    else
+        return True;
 endfunction
 
 function Tagged_Capability fv_unseal(Tagged_Capability rs, Tagged_Capability rt);
@@ -1394,6 +1435,21 @@ function Tagged_Capability fv_unseal(Tagged_Capability rs, Tagged_Capability rt)
                       rsc[63:0]     // cursor address
                     }
     };
+endfunction
+
+function Bool fv_checkValid_CopyType(Tagged_Capability rs, Tagged_Capability rt);
+    Bit #(64) otype = zeroExtend(fv_getOType(rt));
+    if (rs.tag == 1'b0)                 // Tag violation
+        return False;
+    else if (fv_checkSealed(rs))        // Seal violation
+        return False;
+    // TODO: If using 256-bit representation then a bounds check makes sense (otherwise we would have a negative
+    // offset, which would be difficult or impossible to represent). The 128-bit cursor representation doesn't suffer
+    // from this problem, so would it still be worthwhile performing this check?
+    else if (fv_checkSealed(rt) && !fv_checkRange_other(rs,otype))  // Length violation: the otype must be in bounds
+        return False;
+    else
+        return True;
 endfunction
 
 // ================================================================

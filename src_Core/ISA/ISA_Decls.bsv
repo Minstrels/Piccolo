@@ -224,6 +224,14 @@ function Tagged_Capability change_tagged_addr (Tagged_Capability old_cap, Addr n
     };
 endfunction
 
+function Tagged_Capability increment_tagged_addr (Tagged_Capability old_cap, Bit #(64) offset);
+    Bit #(64) new_offset = old_cap.capability[63:0] + offset;
+    return Tagged_Capability {
+        tag: old_cap.tag,
+        capability: {old_cap.capability[127:64], new_offset}
+    };
+endfunction
+
 Opcode op_CAP       = 7'b10_110_11;  // = 0x5b
 Opcode op_CAPLOAD   = 7'b00_010_11;  // = 0x0b
 
