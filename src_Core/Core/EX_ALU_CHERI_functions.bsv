@@ -676,9 +676,13 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
 		    || (funct3 == f3_LD)
 `endif
 		    );
-
+		    
    let alu_outputs = alu_outputs_base;
-   alu_outputs.control   = ((! legal_LD) ? CONTROL_TRAP : CONTROL_STRAIGHT);
+   let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, True);
+   if (!ddc_check)
+      alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+
+   alu_outputs.control   = ((!legal_LD || !ddc_check) ? CONTROL_TRAP : CONTROL_STRAIGHT);
    alu_outputs.op_stage2 = OP_Stage2_LD;
    alu_outputs.rd        = inputs.decoded_instr.rd;
    alu_outputs.addr      = change_tagged_addr(tc_zero, eaddr);
@@ -706,7 +710,11 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 		    );
 
    let alu_outputs = alu_outputs_base;
-   alu_outputs.control   = ((! legal_ST) ? CONTROL_TRAP : CONTROL_STRAIGHT);
+   let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, False);
+   if (!ddc_check)
+      alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+
+   alu_outputs.control   = ((!legal_ST || !ddc_check) ? CONTROL_TRAP : CONTROL_STRAIGHT);
    alu_outputs.op_stage2 = OP_Stage2_ST;
    alu_outputs.addr      = change_tagged_addr(tc_zero, eaddr);
    alu_outputs.val2      = inputs.rs2_val;
@@ -1051,9 +1059,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
             end
             else begin
+                let new_curs = ct.capability[63:0] + fv_getBase(cs)[63:0];
                 alu_outputs.val1 = Tagged_Capability {
                     tag: cs.tag,
-                    capability: {cs.capability[127:64], ct.capability[63:0]}
+                    capability: {cs.capability[127:64], new_curs}
                 };
             end
         end
@@ -1102,7 +1111,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 end
                 alu_outputs.val1 = from129Bit(packCap(out));
             end
-            
         end
         else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin // 0x1d
             Bit#(20) ct_B      = fv_getB(inputs.rs2_val);
@@ -1272,12 +1280,15 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETLEN)    begin
-        //UInt #(65) top = unpack(fv_getTop(inputs.rs1_val));
-        //UInt #(65) bot = unpack(fv_getBase(inputs.rs1_val));
-        Bit #(64) newVal = fv_getLen(inputs.rs1_val);
-        //alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
+        /*UInt #(65) top = unpack(fv_getTop(inputs.rs1_val));
+        UInt #(65) bot = unpack(fv_getBase(inputs.rs1_val));
+        Bit #(65) len = pack(top - bot);
+        Bit #(64) newVal = (len[64] == 1'b0) ? len[63:0] : 64'hffff_ffff_ffff_ffff;*/
+        Bit#(64) newVal = fv_getLen(inputs.rs1_val);
         alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
+    `ifdef CHERIDEBUG
         alu_outputs.debug_out = fv_getTop(inputs.rs1_val)[63:0];
+    `endif
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETTAG)    begin
         alu_outputs.val1 = change_tagged_addr(tc_zero, extend(inputs.rs1_val.tag));
@@ -1373,7 +1384,22 @@ function Bool fv_checkMemoryTarget(Tagged_Capability tc, Bit#(5) spec);
         out = False;
     else if (!fv_checkRange(tc))
         out = False;
-    return True; 
+    return out; 
+endfunction
+
+function Bool fv_checkOP_DDC(Tagged_Capability ddc, Addr target, Bool load);
+    let out = True;
+    if (ddc.tag == 1'b0)
+        out = False;
+    else if (fv_checkSealed(ddc))
+        out = False;
+    else if (load && ddc.capability[116] == 1'b0)
+        out = False;
+    else if (!load && ddc.capability[117] == 1'b0)
+        out = False;
+    else if (!fv_checkRange_other(ddc, target))
+        out = False;
+    return out;
 endfunction
 
 function Bool fv_isLoad(Bit #(5) func5);
@@ -1454,9 +1480,19 @@ function Bit #(65) fv_getTop  (Tagged_Capability tc);
 endfunction
 
 function Bit #(64) fv_getLen(Tagged_Capability tc);
-    CapFat fat = unpackCap({tc.tag, tc.capability});
-    Bit #(66) len = getLengthFat(fat,getTempFields(fat));
-    return len[63:0];
+    //CapFat fat = unpackCap({tc.tag, tc.capability});
+    //Bit #(66) len = getLengthFat(fat,getTempFields(fat));
+    //return len[65:64] == 2'b00 ? len[63:0] : 64'hffff_ffff_ffff_ffff;
+    //return len[65:2];
+    
+    Bit#(65) top = fv_getTop(tc);
+    Bit#(65) bot = fv_getBase(tc);
+    return top[64:1];
+    //Bit#(65) len = top - bot;
+    /*if(len[64] == 1'b1)
+        return 64'hffff_ffff_ffff_ffff;
+    else
+        return len[63:0];*/
 endfunction
 
 function Bit #(15) fv_getPerms (Tagged_Capability tc);
@@ -1498,7 +1534,6 @@ function Bool fv_checkRange_other (Tagged_Capability rs1, Bit# (64) addr);
         out = False;
     return out;
 endfunction
-
 
 function Bool fv_checkRange_simplified (Tagged_Capability rs1);
 	UInt #(6) exp  = unpack(fv_getExp(rs1));
