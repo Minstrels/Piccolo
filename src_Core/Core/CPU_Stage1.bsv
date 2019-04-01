@@ -289,10 +289,10 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	                        rd_addr:        alu_outputs.rd,
 	                        rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
 	                        pc_rdata:       pc,
+	                        pc_wdata:       next_pc,
                             `ifdef CHERI
 	                        rs1_data:       tagged_addr(rs1_val_bypassed),
 	                        rs2_data:       tagged_addr(rs2_val_bypassed),
-	                        pc_wdata:       tagged_addr(next_pcc),
 	                        mem_wdata:      tagged_addr(alu_outputs.val2),
 	                        rd_wdata_alu:   tagged_addr(alu_outputs.val1),
 	                        mem_addr:       ((alu_outputs.op_stage2 == OP_Stage2_LD) || (alu_outputs.op_stage2 == OP_Stage2_ST))
@@ -300,7 +300,6 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
                             `else
 	                        rs1_data:       rs1_val_bypassed,
 	                        rs2_data:       rs2_val_bypassed,
-	                        pc_wdata:       next_pc,
 	                        mem_wdata:      alu_outputs.val2,
 	                        rd_wdata_alu:   alu_outputs.val1,
 	                        mem_addr:       ((alu_outputs.op_stage2 == OP_Stage2_LD) || (alu_outputs.op_stage2 == OP_Stage2_ST)) ? alu_outputs.addr : 0
@@ -384,11 +383,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
         else begin
             csr_regfile.write_csr_cap (ccsr, new_val);
         end
-        //$display("CCSR val: %h", new_val);
       end
-      //$display("Exception code on instr %h: %h", data_to_stage2.instr, trap_info.exc_code);
-      //$display("CCSR val option 2: %h", tagged_addr(data_to_stage2.val1));
-      //$display("Debug out: %h", data_to_stage2.debug_out);
       `endif
    endmethod
 
