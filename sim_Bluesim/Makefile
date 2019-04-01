@@ -177,6 +177,7 @@ BSC_CHERISIMS += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D CSR_REGFILE_UM \
 		-D Near_Mem_Caches \
 		-D CHERI\
+		-D CHERIDEBUG\
 		+RTS -K64M -RTS  -show-range-conflict
 		#-D INCLUDE_GDB_CONTROL\
 		
@@ -417,5 +418,11 @@ vclean:
 .PHONY: full_clean
 full_clean: clean
 	rm -r -f  *~  $(SIM_EXE_FILE)*  *.log  *.vcd  *.hex
+	
+.PHONY: cclean
+cclean:
+	rm -rf cheriv
+	rm exe_CHERIV
+	rm exe_CHERIV.so
 
 # ================================================================
