@@ -631,6 +631,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	        // To Verifier
 	        f_to_verifier.enq (stage2.out.to_verifier);
 `elsif RVFI
+            $display("pc_wdata in pipeline S2->S3: 0x%16h, instr: 0x%08h", stage2.out.data_to_stage3.pc, stage2.out.data_to_stage3.instr);
 	        let outpacket = getRVFIInfoCondensed(stage2.out.data_to_stage3, ?, rg_inum, False,
 	                                0, rg_handler,rg_donehalt);
 	        rg_donehalt <= outpacket.rvfi_halt;
@@ -643,7 +644,10 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	    fa_emit_instr_trace (rg_inum, stage2.out.data_to_stage3.pc, 
 	    stage2.out.data_to_stage3.instr, rg_cur_priv);
       end
-      
+      // TODO: Need to deal with next address for all behaviours.
+`ifdef RVFI_DII
+      let pcw = stage1.out.next_pc;
+`endif
       // ----------------
       // Move instruction from Stage1 to Stage2
       // (but stall if Stage1 is CSRRx and rest of pipe is not empty)
@@ -653,12 +657,6 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	  && (! (stage1_is_csrrx && (   (stage2.out.ostatus != OSTATUS_EMPTY)
 				     || (stage3.out.ostatus != OSTATUS_EMPTY)))))
 	 begin
-	 /*`ifdef CHERI
-	    // Initiate stall if we see a clear instruction.
-	    if (instr_is_clear(stage1.out.data_to_stage2.instr)) begin
-	        next_is_stall = True;
-	    end
-	 `endif*/
 	    stage1.deq;                              stage1_full = False;
 	    stage2.enq (stage1.out.data_to_stage2);  stage2_full = True;
 	 end
@@ -682,7 +680,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	    if (!next_is_stall)
 	    `endif*/
 	    begin
+	    `ifdef RVFI_DII
+	       fa_start_ifetch (pcw, rg_cur_priv, False);
+	    `else
 	       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, False);
+	    `endif
 	       stage1_full = True;
 	    end
 	 end
@@ -740,7 +742,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(True,epc,next_pc,new_mstatus,mcause,True,instr);
       f_to_verifier.enq (to_verifier);
 `elsif RVFI
-      $display("next_pc: %h, trap, instr: %h", next_pc, instr);
+      $display("pc_wdata in pipeline S2-TRAP: 0x%16h, instr: 0x%08h", stage2.out.data_to_stage3.pc, stage2.out.data_to_stage3.instr);
       let outpacket = getRVFIInfoCondensed(stage2.out.data_to_stage3, next_pc,
                                 rg_inum, True, exc_code, rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
@@ -789,6 +791,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
                         next_pc,new_mstatus,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
 `elsif RVFI
+      $display("pc_wdata in pipeline S1-RET: 0x%16h, instr: 0x%08h", stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr);
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
@@ -836,6 +839,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
                         0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
 `elsif RVFI
+      $display("pc_wdata in pipeline S1-FENCEi: 0x%16h, instr: 0x%08h", stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr);
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
@@ -885,6 +889,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
                         0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
 `elsif RVFI
+      $display("pc_wdata in pipeline S1-FENCE: 0x%16h, instr: 0x%08h", stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr);
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
@@ -932,6 +937,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
                         0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
 `elsif RVFI
+      $display("pc_wdata in pipeline S1-SFENCE.VMA: 0x%16h, instr: 0x%08h", stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr);
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
@@ -984,6 +990,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 					    0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
 `elsif RVFI
+      $display("pc_wdata in pipeline S1-WFI: 0x%16h, instr: 0x%08h", stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr);
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
@@ -1047,6 +1054,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 					    mcause,True,instr);
       f_to_verifier.enq (to_verifier);
 `elsif RVFI
+      $display("pc_wdata in pipeline S1-TRAP: 0x%16h, instr: 0x%08h", stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr);
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,next_pc,rg_inum,True,exc_code,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
