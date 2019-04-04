@@ -678,10 +678,13 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
 		    );
 		    
    let alu_outputs = alu_outputs_base;
-   let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, True);
+   let len = ((funct3 == f3_LB) || (funct3 == f3_LBU)) ? 4'h1 :
+             ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h2 :
+             ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h4 :
+             4'h8;
+   let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, True, len);
    if (!ddc_check)
       alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-
    alu_outputs.control   = ((!legal_LD || !ddc_check) ? CONTROL_TRAP : CONTROL_STRAIGHT);
    alu_outputs.op_stage2 = OP_Stage2_LD;
    alu_outputs.rd        = inputs.decoded_instr.rd;
@@ -710,7 +713,11 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 		    );
 
    let alu_outputs = alu_outputs_base;
-   let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, False);
+   let len = ((funct3 == f3_LB) || (funct3 == f3_LBU)) ? 4'h1 :
+             ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h2 :
+             ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h4 :
+             4'h8;
+   let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, True, len);
    if (!ddc_check)
       alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
 
@@ -1358,6 +1365,7 @@ endfunction : fv_CINSPECT_ETC
 // CAPABILITY LOAD
 // Pass through to memory stage? What details do we need?
 
+/*
 function ALU_Outputs fv_CHERILOAD (ALU_Inputs inputs);
     let alu_outputs = alu_outputs_base;
     let checked_val = fv_checkMemoryTarget(inputs.rs1_val, inputs.decoded_instr.rs2);
@@ -1366,7 +1374,7 @@ function ALU_Outputs fv_CHERILOAD (ALU_Inputs inputs);
         alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
     end
     return alu_outputs;
-endfunction
+endfunction*/
 
 // ----------------------------------------------------------------
 // UTILITY FUNCTIONS
@@ -1379,16 +1387,24 @@ function Bool fv_checkMemoryTarget(Tagged_Capability tc, Bit#(5) spec);
         out = False;
     else if (fv_checkSealed(tc)) // Capability sealed
         out = False;
-    else if (fv_isLoad(spec) && cpv[116] == 1'b0) // No load permission
+    else if ((spec[3:2] == 1'b11)) // Illegal spec
         out = False;
-    else if (!fv_isLoad(spec) && cpv[117] == 1'b0) // No store permission
+    else if (fv_isLoad(spec) && cpv[116] == 1'b0) // Load permission
         out = False;
-    else if (!fv_checkRange(tc))
+    else if (fv_isLoad(spec) && cpv[117] == 1'b0) // Store permission
+        out = False;
+    else if ((spec[1:0] == 2'b00) && fv_checkRange_withLen(tc,4'h1)) // Bounds
+        out = False;
+    else if ((spec[1:0] == 2'b01) && fv_checkRange_withLen(tc,4'h2))
+        out = False;
+    else if ((spec[1:0] == 2'b10) && fv_checkRange_withLen(tc,4'h4))
+        out = False;
+    else if ((spec[1:0] == 2'b11) && fv_checkRange_withLen(tc,4'h8))
         out = False;
     return out; 
 endfunction
 
-function Bool fv_checkOP_DDC(Tagged_Capability ddc, Addr target, Bool load);
+function Bool fv_checkOP_DDC(Tagged_Capability ddc, Addr target, Bool load, Bit#(4) len);
     let out = True;
     if (ddc.tag == 1'b0)
         out = False;
@@ -1398,7 +1414,7 @@ function Bool fv_checkOP_DDC(Tagged_Capability ddc, Addr target, Bool load);
         out = False;
     else if (!load && ddc.capability[117] == 1'b0)
         out = False;
-    else if (!fv_checkRange_other(ddc, target))
+    else if (!fv_checkRange_withLen(change_tagged_addr(ddc, target), len)
         out = False;
     return out;
 endfunction
@@ -1512,21 +1528,12 @@ function Bool fv_checkValid_Execute (Tagged_Capability rs1);
         out = False;
     if (perms[1] == 1'b0) // Permit_Execute violation
         out = False;
-    if (!fv_checkRange_JALR(rs1))
+    if (!fv_checkRange_withLen(rs1, 4'h04)) // Bounds violation - 4-byte value
         out = False;
     return out;
 endfunction
 
-function Bool fv_checkRange_JALR (Tagged_Capability rs1);
-    Bit #(64) base   = fv_getBase(rs1)[63:0];
-    Bit #(64) top    = fv_getTop (rs1)[63:0];
-    Bit #(64) addr   = rs1.capability[63:0];
-    Bool out = True;
-    if (((addr + 4) > top) || (addr < base)) // Bounds violation
-        out = False;
-    return out;
-endfunction
-
+/*
 function Bool fv_checkRange_other (Tagged_Capability rs1, Bit# (64) addr);
     Bit #(64) base   = fv_getBase(rs1)[63:0];
     Bit #(64) top    = fv_getTop (rs1)[63:0];
@@ -1536,6 +1543,7 @@ function Bool fv_checkRange_other (Tagged_Capability rs1, Bit# (64) addr);
     return out;
 endfunction
 
+
 function Bool fv_checkRange_simplified (Tagged_Capability rs1);
 	UInt #(6) exp  = unpack(fv_getExp(rs1));
     // If it's less we're in the container below, if it's greater 
@@ -1543,12 +1551,18 @@ function Bool fv_checkRange_simplified (Tagged_Capability rs1);
     return ((rs1.capability[63:0] >> exp) == zeroExtend(fv_getB(rs1)));
 endfunction
 
+
 function Bool fv_checkRange (Tagged_Capability rs1);
+    return fv_checkRange_withLen(rs1, 4'h4);
+endfunction
+*/
+
+function Bool fv_checkRange_withLen (Tagged_Capability rs1, Bit#(4) bytes);
     Bit #(64) base   = fv_getBase(rs1)[63:0];
     Bit #(64) top    = fv_getTop (rs1)[63:0];
     Bool out = True;
     Bit #(64) addr   = rs1.capability[63:0];
-    if ((addr >= top) || (addr < base)) // Bounds violation
+    if ((addr + bytes > top) || (addr < base)) // Bounds violation
         out = False;
     return out;
 endfunction
@@ -1574,7 +1588,7 @@ function Bool fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt);
         out = False;
     if (rt.capability[120] == 0)                    // Permit_Seal violation
         out = False;
-    if (!fv_checkRange(rt))                         // Bounds violation
+    if (!fv_checkRange_withLen(rt, 4'h01))           // Bounds violation
         out = False;
     if (cap_addr(rt.capability) > 64'h0000_0000_00ff_ffff)      // Max_OType violation
         out = False;
@@ -1606,13 +1620,11 @@ function Bool fv_checkValid_Unseal(Tagged_Capability rs, Tagged_Capability rt);
     let out = True;
     if (rs.tag == 0 || rt.tag == 0)                     // Tag violation
         out = False;
-    if ((!fv_checkSealed(rs)) || fv_checkSealed(rt))    // Sealed violation
+    else if ((!fv_checkSealed(rs)) || fv_checkSealed(rt))    // Sealed violation
         out = False;
-    if ({rsc[95:84], rsc[75:64]} != rtc[23:0])          // OType violation
+    else if ({rsc[95:84], rsc[75:64]} != rtc[23:0])          // OType violation
         out = False;
-    if (rtc[122] == 0)                                  // Permit_Unseal violation
-        out = False;
-    if (!fv_checkRange(rt))                             // Bounds violation
+    else if (rtc[122] == 0)                                  // Permit_Unseal violation
         out = False;
     return out;
 endfunction
@@ -1646,7 +1658,7 @@ function Bool fv_checkValid_CopyType(Tagged_Capability rs, Tagged_Capability rt)
     // TODO: If using 256-bit representation then a bounds check makes sense (otherwise we would have a negative
     // offset, which would be difficult or impossible to represent). The 128-bit cursor representation doesn't suffer
     // from this problem, so would it still be worthwhile performing this check?
-    else if (fv_checkSealed(rt) && !fv_checkRange_other(rs,otype))  // Length violation: the otype must be in bounds
+    else if (fv_checkSealed(rt) && !fv_checkRange_withLen(change_tagged_addr(rs,otype),4'h1)  // Length violation: the otype must be in bounds
         return False;
     else
         return True;
