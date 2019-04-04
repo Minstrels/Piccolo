@@ -222,6 +222,26 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 					            };
       end
       // This stage is just relaying ALU results from previous stage to next stage
+`ifdef CHERI
+      else if (rg_stage2.op_stage2 == OP_Stage2_CLR) begin
+      
+	    let data_to_stage3 = data_to_stage3_base;
+	    // TODO: Is this correct? It's not done elsewhere, but why?
+	    data_to_stage3.rd_valid = False; 
+	    data_to_stage3.rd       = 0;
+	    
+	    let bypass = bypass_base;
+	    bypass.bypass_state = BYPASS_CLEAR;
+	    output_stage2 = Output_Stage2 {ostatus:         OSTATUS_PIPE,
+					trap_info:       ?,
+					data_to_stage3:  data_to_stage3,
+					bypass:          bypass
+`ifdef INCLUDE_TANDEM_VERIF
+					, to_verifier:     to_verifier_base
+`endif
+					};
+      end
+`endif
       else if (rg_stage2.op_stage2 == OP_Stage2_ALU) begin
 	    let data_to_stage3 = data_to_stage3_base;
 	    data_to_stage3.rd_valid = True;

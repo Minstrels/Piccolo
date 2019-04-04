@@ -63,6 +63,8 @@ interface GPR_RegFile_IFC;
    method Action write_rd_int (RegName rd, WordXL rd_val);
    (* always_ready *)
    method Action clear_quarter (Bit #(2) qid, Bit #(8) mask);
+   (* always_ready *)
+   method Bool is_busy();
 `else
    // GPR read
    (* always_ready *)
@@ -237,6 +239,10 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
       rg_mask  <= mask;
       rg_sub   <= 3'b000;
       rg_state <= RF_CLEARING;
+   endmethod
+   
+   method Bool is_busy();
+      return (rg_state != RF_RUNNING);
    endmethod
 `else
    method Action write_rd (RegName rd, Word rd_val);

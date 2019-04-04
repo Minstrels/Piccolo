@@ -163,6 +163,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       Word rs2_val_bypassed = ((rs2 == 0) ? 0 : rs2b);
       `endif
       
+      Bool gpr_busy = gpr_regfile.is_busy();
+      
       // ----------------
       // CSR address-based protection checks
       Bool is_csrrx = ((decoded_instr.opcode == op_SYSTEM) && f3_is_CSRR_any (funct3));
@@ -232,6 +234,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
       // Stall if bypass pending for rs1 or rs2
       else if (rs1_busy || rs2_busy) begin
+	    output_stage1.ostatus = OSTATUS_BUSY;
+      end
+      
+      // Stall-based fast clearing
+      else if (gpr_regfile.is_busy()) begin
 	    output_stage1.ostatus = OSTATUS_BUSY;
       end
 

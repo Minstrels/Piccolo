@@ -1260,6 +1260,7 @@ endfunction : fv_CHERI
 // only the 128-bit representation is used the separation looks irrational.
 function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     let alu_outputs = alu_outputs_base;
+    alu_outputs.op_stage2 = OP_Stage2_ALU;
     let rs1_cap  = inputs.rs1_val.capability;
     // Some CHERI ops have a 5-bit decoding value in the rs2 position rather than the
     // standard position used in the base RISC-V ISA.
@@ -1336,11 +1337,12 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         
     //end
     //
-    /* TODO: This logic isn't currently utilised, so don't check it.
     // for ALU output values, we'll set val1[9:8] = quadrant, val1[7:0] = mask
     else if (inputs.decoded_instr.rs2 == f5_FASTCLEAR)  begin
         alu_outputs.val1 = change_tagged_addr(tc_zero, extend({inputs.instr[19:18], inputs.instr[17:15], inputs.instr[11:7]}));
+        alu_outputs.op_stage2 = OP_Stage2_CLR;
     end
+    /*
     `ifdef ISA_F
     else if (inputs.decoded_instr.rs2 == f5_FPCLEAR)    begin 
         alu_outputs.val1 = change_tagged_addr(tc_zero, extend({inputs.instr[19:18], inputs.instr[17:15], inputs.instr[11:7]}));
@@ -1349,7 +1351,6 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     else begin
         alu_outputs.control = CONTROL_TRAP;
     end
-    alu_outputs.op_stage2 = OP_Stage2_ALU;
     return alu_outputs;
 endfunction : fv_CINSPECT_ETC
 

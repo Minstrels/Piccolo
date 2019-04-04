@@ -71,7 +71,7 @@ deriving (Eq, Bits, FShow);
 // - have Rd output, Rd is known and RdVal is known
 // Note: a bypass has to stall if Rd matches and RdVal is unknown
 
-typedef enum { BYPASS_RD_NONE, BYPASS_RD, BYPASS_RD_RDVAL } Bypass_State
+typedef enum { BYPASS_RD_NONE, BYPASS_RD, BYPASS_RD_RDVAL, BYPASS_CLEAR } Bypass_State
 deriving (Eq, Bits, FShow);
 
 // We do not bypass CSR values, since we stall on CSRRxy insructions.
@@ -118,9 +118,21 @@ function Tuple2 #(Bool, Word) fn_gpr_bypass (Bypass bypass, RegName rd, Word rd_
 `endif
    Bool busy = ((bypass.bypass_state == BYPASS_RD) && (bypass.rd == rd));
 `ifdef CHERI
-   Tagged_Capability val  = (  ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
-		? bypass.rd_val
-		: rd_val);
+   /*Tagged_Capability val  = (((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
+        ? bypass.rd_val
+        : rd_val);*/
+        //val1[9:8] = quadrant, val1[7:0] = mask
+   Tagged_Capability val = rd_val;
+   if (bypass.bypass_state == BYPASS_CLEAR) begin
+      //Bit#(8) indexer = 8'h01 << pack(rd[2:0])
+      //if ((bypass.rd_val[9:8] == rd[4:3]) && ((bypass.rd_val[7:0] & indexer) != 8'h00))
+      if    ((bypass.rd_val.capability[9:8] == rd[4:3]) 
+         && ((bypass.rd_val.capability[7:0])[pack(rd[2:0])] == 1'b1))
+         val = tc_zero;
+   end
+   else if ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd)) begin
+      val = bypass.rd_val;
+   end
 `else
    Word val  = (  ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
 		? bypass.rd_val
@@ -215,6 +227,10 @@ endinstance
 typedef enum {  OP_Stage2_ALU         // Pass-through (non mem, M, FD, AMO)
 	      , OP_Stage2_LD
 	      , OP_Stage2_ST
+	      
+`ifdef CHERI
+          , OP_Stage2_CLR
+`endif
 
 `ifdef SHIFT_SERIAL
 	      , OP_Stage2_SH
@@ -407,7 +423,6 @@ typedef struct {
 deriving (Bits);
 
 `ifdef CHERI
-// TODO: FPClear?
 function Bool instr_is_clear(Instr ins);
     //opcode 0x5b, f3 0, and f7 0x7f.
     return (
