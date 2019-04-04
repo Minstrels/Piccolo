@@ -555,6 +555,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
    Bool stage1_is_csrrx = ((stage1.out.ostatus == OSTATUS_PIPE)
 			   && fn_instr_is_csrrx (stage1.out.data_to_stage2.instr));
+   
+   Bool stage3_is_clearing = stage3.is_busy();
     
 
    // ================================================================
@@ -601,17 +603,13 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
     rule rl_pipe (   (rg_state == CPU_RUNNING)
 		 && (! pipe_is_empty)
 		 && (! pipe_has_nonpipe)
-		 && (! stage1_halted));
+		 && (! stage1_halted)
+         && (! stage3.is_clearing)
+         );
 
         Bool stage3_full = (stage3.out.ostatus != OSTATUS_EMPTY);
         Bool stage2_full = (stage2.out.ostatus != OSTATUS_EMPTY);
         Bool stage1_full = (stage1.out.ostatus != OSTATUS_EMPTY);
-        
-        /* `ifdef CHERI
-        // We will stall next if we were stalled previously and we're not 
-        // about to commit the clear in question.
-        Bool next_is_stall = (clear_stall && !stage3.out.fn_clear);
-        `endif*/ 
         
         // ----------------
         // Stage3 sink (does regfile writebacks)

@@ -66,6 +66,8 @@ interface CPU_Stage3_IFC;
 
    // ---- Debugging
    method Action show_state;
+   
+   method Bool is_busy();
 endinterface
 
 // ================================================================
@@ -175,6 +177,11 @@ module mkCPU_Stage3 #(Bit #(4)         verbosity,
       else
 	 $display ("    S3 state: empty");
    endmethod
+   
+   method Bool is_busy();
+     return gpr_regfile.is_busy();
+   endmethod
+   
 endmodule
 
 // ================================================================
