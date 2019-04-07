@@ -717,7 +717,7 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
              ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h2 :
              ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h4 :
              4'h8;
-   let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, True, len);
+   let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, False, len);
    if (!ddc_check)
       alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
 
