@@ -774,7 +774,11 @@ Exc_Code  exc_code_ECALL_FROM_M                  = 11;
 
 Exc_Code  exc_code_INSTR_PAGE_FAULT              = 12;
 Exc_Code  exc_code_LOAD_PAGE_FAULT               = 13;
+`ifdef CHERI
+Exc_Code  exc_code_CRETURN                       = 10;
+`else
 Exc_Code  exc_code_RESERVED_14                   = 14;
+`endif
 Exc_Code  exc_code_STORE_AMO_PAGE_FAULT          = 15;
 
 
