@@ -357,11 +357,11 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
    Tagged_Capability next = change_tagged_addr(inputs.pcc, next_pc);
    alu_outputs.addr      = next;
    
-   if (!fv_checkRange_withLen(next, 4'h4) begin
+   if (!fv_checkRange_withLen(next, 4'h4)) begin
       alu_outputs.control = CONTROL_TRAP;
       alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+   end
    else begin
-      let alu_outputs = alu_outputs_base;
       alu_outputs.control   = ((next_pc [1] == 1'b0) ? CONTROL_BRANCH : CONTROL_TRAP);
       alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
       alu_outputs.op_stage2 = OP_Stage2_ALU;
@@ -389,14 +389,15 @@ function ALU_Outputs fv_JALR (ALU_Inputs inputs);
    // riscv-spec-v2.2. Secn 2.5. Page 16
    next_pc[0] = 1'b0;
    
+   let alu_outputs = alu_outputs_base;
    Tagged_Capability next = change_tagged_addr(inputs.pcc, next_pc);
    alu_outputs.addr      = next;
    
-   if (!fv_checkRange_withLen(next, 4'h4) begin
+   if (!fv_checkRange_withLen(next, 4'h4)) begin
       alu_outputs.control = CONTROL_TRAP;
       alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+   end
    else begin
-      let alu_outputs = alu_outputs_base;
       alu_outputs.control   = ((next_pc [1] == 1'b0) ? CONTROL_BRANCH : CONTROL_TRAP);
       alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
       alu_outputs.op_stage2 = OP_Stage2_ALU;
@@ -1046,7 +1047,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 Bit #(128) newcap = {newperms, cs.capability[112:0]};
                 alu_outputs.val1 = Tagged_Capability {
                     tag: 1'b1,
-                    capability: newcap;
+                    capability: newcap
                 };
             end
         end
@@ -1223,7 +1224,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.control = CONTROL_TRAP;
             end
             else if (inputs.decoded_instr.rs2 == 5'h00) begin
-                let ca = inputs.
+                
             end
             else if (inputs.decoded_instr.rs2 == 5'h01) begin
                 
@@ -1365,7 +1366,7 @@ function Bool fv_checkMemoryTarget(Tagged_Capability tc, Bit#(5) spec);
         out = False;
     else if (fv_checkSealed(tc)) // Capability sealed
         out = False;
-    else if ((spec[3:2] == 1'b11)) // Illegal spec
+    else if ((spec[3:2] == 2'b11)) // Illegal spec
         out = False;
     else if (fv_isLoad(spec) && cpv[116] == 1'b0) // Load permission
         out = False;
@@ -1392,7 +1393,7 @@ function Bool fv_checkOP_DDC(Tagged_Capability ddc, Addr target, Bool load, Bit#
         out = False;
     else if (!load && ddc.capability[117] == 1'b0)
         out = False;
-    else if (!fv_checkRange_withLen(change_tagged_addr(ddc, target), len)
+    else if (!fv_checkRange_withLen(change_tagged_addr(ddc, target), len))
         out = False;
     return out;
 endfunction
@@ -1522,7 +1523,8 @@ function Bool fv_checkRange_withLen (Tagged_Capability rs1, Bit#(4) bytes);
     Bit #(64) top    = fv_getTop (rs1)[63:0];
     Bool out = True;
     Bit #(64) addr   = rs1.capability[63:0];
-    if ((addr + bytes > top) || (addr < base)) // Bounds violation
+    Bit #(64) by = zeroExtend(bytes);
+    if ((addr + by > top) || (addr < base)) // Bounds violation
         out = False;
     return out;
 endfunction
@@ -1618,7 +1620,7 @@ function Bool fv_checkValid_CopyType(Tagged_Capability rs, Tagged_Capability rt)
     // TODO: If using 256-bit representation then a bounds check makes sense (otherwise we would have a negative
     // offset, which would be difficult or impossible to represent). The 128-bit cursor representation doesn't suffer
     // from this problem, so would it still be worthwhile performing this check?
-    else if (fv_checkSealed(rt) && !fv_checkRange_withLen(change_tagged_addr(rs,otype),4'h1)  // Length violation: the otype must be in bounds
+    else if (fv_checkSealed(rt) && !fv_checkRange_withLen(change_tagged_addr(rs,otype),4'h1))  // Length violation: the otype must be in bounds
         return False;
     else
         return True;

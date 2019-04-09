@@ -604,7 +604,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 		 && (! pipe_is_empty)
 		 && (! pipe_has_nonpipe)
 		 && (! stage1_halted)
-         && (! stage3.is_clearing)
+         && (! stage3.is_busy)
          );
 
         Bool stage3_full = (stage3.out.ostatus != OSTATUS_EMPTY);
