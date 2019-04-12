@@ -1218,7 +1218,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         // for every other instruction, when the selector field (unique to this instruction) could be put there
         // instead, thereby preventing the need for an unnecessary special case to get the right registers for
         // this specific instruction?
-        else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
+        /*else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
             if (inputs.decoded_instr.rs2 == 5'h1f) begin
                 alu_outputs.exc_code = exc_code_CRETURN;
                 alu_outputs.control = CONTROL_TRAP;
@@ -1233,7 +1233,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
                 alu_outputs.control = CONTROL_TRAP;
             end
-        end
+        end*/
         else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin // 0x00
             Bit#(5) op_spec = inputs.decoded_instr.rs2;
             Tagged_Capability controller = (op_spec[4] == 1'b1) ? inputs.rs1_val : inputs.ddc;
@@ -1338,13 +1338,12 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         end
     end
     // XXX: Comments in the spec suggest check-perm/type will be removed in future.
-    //else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
+    /*else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
     
-    //end
-    //else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
+    end
+    else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
         
-    //end
-    //
+    end*/
     // for ALU output values, we'll set val1[9:8] = quadrant, val1[7:0] = mask
     else if (inputs.decoded_instr.rs2 == f5_FASTCLEAR)  begin
         alu_outputs.val1 = change_tagged_addr(tc_zero, extend({inputs.instr[19:18], inputs.instr[17:15], inputs.instr[11:7]}));
@@ -1484,10 +1483,10 @@ function Bit #(64) fv_getLen(Tagged_Capability tc);
     Bit#(65) top = fv_getTop(tc);
     Bit#(65) bot = fv_getBase(tc);
     Bit#(65) len = top - bot;
+    let out = len[63:0];
     if(len[64] == 1'b1)
-        return 64'hffff_ffff_ffff_ffff;
-    else
-        return len[63:0];
+        out = 64'hffff_ffff_ffff_ffff;
+    return out;
 endfunction
 
 function Bit #(15) fv_getPerms (Tagged_Capability tc);

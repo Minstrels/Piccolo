@@ -161,7 +161,7 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
       // ----------------------------------------------------------------
    // CHERI-RISC-V Fast-clearing instructions
    // This loop clears a subset of the registers (up to 1/8 of the file)
-   
+  
 `ifdef CHERI
    rule rl_fastclear (rg_state == RF_CLEARING);
       if (rg_mask[rg_sub] == 1)
