@@ -1241,41 +1241,39 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         // this specific instruction?
         else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
             let selector = instr_rs2 (inputs.instr);
-            let cb = inputs.rs1_val;
-            let cs = inputs.rs2_val;
             if (selector == 5'h1f) begin
                 alu_outputs.exc_code = exc_code_CRETURN;
                 alu_outputs.control = CONTROL_TRAP;
             end
             else if (selector == 5'h00) begin
                 alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-                if (cb.tag == 1'b0 || cs.tag == 1'b0)
+                if (cs.tag == 1'b0 || ct.tag == 1'b0)
                     alu_outputs.control = CONTROL_TRAP;
-                else if (!fv_checkSealed(cb) || !fv_checkSealed(cs))
+                else if (!fv_checkSealed(cs) || !fv_checkSealed(ct))
                     alu_outputs.control = CONTROL_TRAP;
-                else if (fv_getOType(cs) != fv_getOType(cb)) // 114
+                else if (fv_getOType(ct) != fv_getOType(cs)) // 114
                     alu_outputs.control = CONTROL_TRAP;
-                else if (cb.capability[114] == 1'b1 || cs.capability[114] == 1'b0)
+                else if (cs.capability[114] == 1'b1 || ct.capability[114] == 1'b0)
                     alu_outputs.control = CONTROL_TRAP;
-                else if (!fv_checkRange_withLen(cs,4'h4))
+                else if (!fv_checkRange_withLen(ct,4'h4))
                     alu_outputs.control = CONTROL_TRAP;
             end
             else if (selector == 5'h01) begin
                 alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-                if (cb.tag == 1'b0 || cs.tag == 1'b0)
+                if (cs.tag == 1'b0 || ct.tag == 1'b0)
                     alu_outputs.control = CONTROL_TRAP;
-                else if (!fv_checkSealed(cb) || !fv_checkSealed(cs))
+                else if (!fv_checkSealed(cs) || !fv_checkSealed(ct))
                     alu_outputs.control = CONTROL_TRAP;
-                else if (fv_getOType(cs) != fv_getOType(cb)) // 114
+                else if (fv_getOType(ct) != fv_getOType(cs)) // 114
                     alu_outputs.control = CONTROL_TRAP;
-                else if (cb.capability[114] == 1'b1 || cs.capability[114] == 1'b0)
+                else if (cs.capability[114] == 1'b1 || ct.capability[114] == 1'b0)
                     alu_outputs.control = CONTROL_TRAP;
-                else if (!fv_checkRange_withLen(cs,4'h4))
+                else if (!fv_checkRange_withLen(ct,4'h4))
                     alu_outputs.control = CONTROL_TRAP;
-                else if (!fv_checkValid_Unseal(cs,cb))
+                else if (!fv_checkValid_Unseal(ct,cs))
                     alu_outputs.control = CONTROL_TRAP;
                 else begin
-                    let new_pcc = fv_unseal(cs,cb);
+                    let new_pcc = fv_unseal(ct,cs);
                     alu_outputs.exc_code = exc_code_INSTR_ADDR_MISALIGNED;
                     alu_outputs.control = ((new_pcc.capability[1:0] == 2'b00) ? CONTROL_BRANCH : CONTROL_TRAP);
                 end
@@ -1533,7 +1531,7 @@ function Bit #(65) fv_getTop  (Tagged_Capability tc);
 endfunction
 
 function Bit #(64) fv_getLen(Tagged_Capability tc);
-    return ((fv_getT(tc) - fv_getB(tc)) << fv_getExp(tc));
+    return (zeroExtend(fv_getT(tc) - fv_getB(tc)) << fv_getExp(tc));
     
 endfunction
 
@@ -1559,11 +1557,11 @@ function Bool fv_checkValid_Execute (Tagged_Capability rs1);
 endfunction
 
 function Bool fv_simpleRange_withLen(Tagged_Capability tc, Bit#(4) bytes);
-	UInt #(9) exp  = unpack(fv_getExp(rs1));
+	UInt #(9) exp  = unpack(fv_getExp(tc));
     Addr lower = tc.capability[63:0];
-    Addr upper = lower + bytes - 1;
-    Bit#(64) B = zeroExtend(fv_getB(tc));
-    return (lower >> exp == B) && (upper >> exp == B);
+    Addr upper = lower + zeroExtend(bytes) - 1;
+    Bit#(64) b = zeroExtend(fv_getB(tc));
+    return (lower >> exp == b) && (upper >> exp == b);
 endfunction
 
 function Bool fv_checkRange_simplified (Tagged_Capability rs1);
