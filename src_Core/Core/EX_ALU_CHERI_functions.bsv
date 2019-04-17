@@ -351,7 +351,7 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
    // nsharma: next_pc[0] should be cleared for JAL/JALR
    // riscv-spec-v2.2. Secn 2.5. Page 16
    next_pc[0] = 1'b0;
-
+/*
    let alu_outputs = alu_outputs_base;
    
    Tagged_Capability next = change_tagged_addr(inputs.pcc, next_pc);
@@ -367,8 +367,18 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
       alu_outputs.op_stage2 = OP_Stage2_ALU;
       alu_outputs.rd        = inputs.decoded_instr.rd;
       alu_outputs.val1      = change_tagged_addr(inputs.pcc, ret_pc);
-   end
-
+   end*/
+   
+   
+   let alu_outputs = alu_outputs_base;
+   alu_outputs.control   = ((next_pc [1] == 1'b0) ? CONTROL_BRANCH : CONTROL_TRAP);
+   alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
+   alu_outputs.op_stage2 = OP_Stage2_ALU;
+   alu_outputs.rd        = inputs.decoded_instr.rd;
+   alu_outputs.addr      = change_tagged_addr(inputs.pcc, next_pc);
+   alu_outputs.val1      = change_tagged_addr(inputs.pcc, ret_pc);
+   
+   
    return alu_outputs;
 endfunction
 
@@ -390,22 +400,33 @@ function ALU_Outputs fv_JALR (ALU_Inputs inputs);
    next_pc[0] = 1'b0;
    
    let alu_outputs = alu_outputs_base;
-   Tagged_Capability next = change_tagged_addr(inputs.pcc, next_pc);
-   alu_outputs.addr      = next;
    
-   if (!fv_checkRange_withLen(next, 4'h4)) begin
+   /*Tagged_Capability next = change_tagged_addr(inputs.pcc, next_pc);
+   
+   if (!fv_checkRange_withLen(next, 4'h04)) begin
       alu_outputs.control = CONTROL_TRAP;
       alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
    end
+   else if (next_pc[1] == 1'b1) begin
+      alu_outputs.control = CONTROL_TRAP;
+      alu_outputs.exc_code = exc_code_INSTR_ADDR_MISALIGNED;
+   end
    else begin
-      alu_outputs.control   = ((next_pc [1] == 1'b0) ? CONTROL_BRANCH : CONTROL_TRAP);
-      alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
+      alu_outputs.addr      = next;
+      alu_outputs.control   = CONTROL_BRANCH;
       alu_outputs.op_stage2 = OP_Stage2_ALU;
       alu_outputs.rd        = inputs.decoded_instr.rd;
       alu_outputs.val1      = change_tagged_addr(inputs.pcc, ret_pc);
-   end
+   end*/
 
-   
+
+   alu_outputs.control   = ((next_pc [1] == 1'b0) ? CONTROL_BRANCH : CONTROL_TRAP);
+   alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
+   alu_outputs.op_stage2 = OP_Stage2_ALU;
+   alu_outputs.rd        = inputs.decoded_instr.rd;
+   alu_outputs.addr      = change_tagged_addr(inputs.pcc, next_pc);
+   alu_outputs.val1      = change_tagged_addr(inputs.pcc, ret_pc);
+
 
    return alu_outputs;
 endfunction
@@ -1117,7 +1138,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             Bit#(64) ct_top    = fv_getTop(inputs.rs2_val)[63:0];
             Bit#(15) ct_perms  = fv_getPerms(inputs.rs2_val);
             Bit#(64) ct_cursor = inputs.rs2_val.capability[63:0];
-            Bit#(6)  ct_exp    = fv_getExp(inputs.rs2_val);
+            Bit#(6)  ct_exp    = fv_getExp(inputs.rs2_val)[5:0];
             
             Bit#(64) cb_bot   = fv_getBase(inputs.rs1_val)[63:0];
             Bit#(64) cb_top   = fv_getTop(inputs.rs1_val)[63:0];
@@ -1406,11 +1427,11 @@ function Bool fv_isStore(Bit #(5) func5);
 endfunction
 
 function Bool fv_checkSealed(Tagged_Capability tc);
-    return unpack(tc.capability[104]);
+    return (tc.capability[104] == 1'b1);
 endfunction
 
-function Bit #(6)  fv_getExp  (Tagged_Capability tc);
-    return tc.capability[110:105];
+function Bit #(9)  fv_getExp  (Tagged_Capability tc);
+    return zeroExtend(tc.capability[110:105]);
 endfunction
 
 function Bit #(20)  fv_getB  (Tagged_Capability tc);
@@ -1427,7 +1448,7 @@ function Bit #(20)  fv_getT  (Tagged_Capability tc);
         return tc.capability[83:64];
 endfunction
 
-function Int #(2) fv_baseCorrection (Bit #(64) a, UInt #(20) b, UInt #(6) e);
+function Int #(2) fv_baseCorrection (Bit #(64) a, UInt #(20) b, UInt #(9) e);
     UInt #(20) aMid = unpack(a[19+e:e]);
     UInt #(20) r = b - unpack(1 << 12);
     Bool c1 = (aMid < r);
@@ -1440,22 +1461,22 @@ function Int #(2) fv_baseCorrection (Bit #(64) a, UInt #(20) b, UInt #(6) e);
         return 0;
 endfunction
 
-function Int #(2) fv_topCorrection (Bit #(64) a, UInt #(20) b, UInt #(20) t, UInt #(6) e);
+function Bit #(65) fv_topCorrection (Bit #(64) a, UInt #(20) b, UInt #(20) t, UInt #(9) e);
     UInt #(20) aMid = unpack(a[19+e:e]);
     UInt #(20) r = b - unpack(1 << 12);
     Bool c1 = (aMid < r);
     Bool c2 = (t < r);
     if (c1 && !c2)
-        return -1;
+        return 65'h1_ffff_ffff_ffff_ffff;
     else if (c2 && !c1)
-        return 1;
+        return 65'h0_0000_0000_0000_0001;
     else
-        return 0;
+        return 65'h0;
 endfunction
 
 function Bit #(65) fv_getBase (Tagged_Capability tc);
     // As defined in 3.3.8/page 81.
-    UInt #(6)  e = unpack(fv_getExp(tc));
+    UInt #(9)  e = unpack(fv_getExp(tc));
     Bit  #(20) b = fv_getB(tc);
     Bit #(65) result = zeroExtend(pack(unpack(tc.capability[63:20+e]) + fv_baseCorrection(tc.capability[63:0],unpack(b),e)) << 20 + e);
     Bit #(65) b_val = zeroExtend(b << e);
@@ -1465,28 +1486,36 @@ endfunction
 
 function Bit #(65) fv_getTop  (Tagged_Capability tc);
     // As defined in 3.3.8/page 81.
-    UInt #(6)  e = unpack(fv_getExp(tc));
+    UInt #(9)  e = unpack(fv_getExp(tc));
     Bit  #(20) t = fv_getT(tc);
     Bit  #(20) b = fv_getB(tc);
+    /*
     Bit #(65) result = zeroExtend(pack(unpack(tc.capability[63:20+e]) + fv_topCorrection(tc.capability[63:0],unpack(b),unpack(t),e)) << 20 + e);
     Bit #(65) t_val = zeroExtend(t << e);
-    result = result + t_val;
-    return result;
+    result = result + t_val;*/
+    Bit #(65) result = 65'h0;
+    Bit #(65) addrbits = tc.capability[(63+e):(20+e)];
+    Bit #(65) upperbits = (addrbits + fv_topCorrection(tc.capability[63:0],unpack(b),unpack(t),e)) << (20 + e);
+    Bit #(65) lowerbits = zeroExtend(t << e);
+    
+    return upperbits + lowerbits;
+    //return fv_topCorrection(tc.capability[63:0],unpack(b),unpack(t),e);
 endfunction
 
 function Bit #(64) fv_getLen(Tagged_Capability tc);
-    //CapFat fat = unpackCap({tc.tag, tc.capability});
-    //Bit #(66) len = getLengthFat(fat,getTempFields(fat));
-    //return len[65:64] == 2'b00 ? len[63:0] : 64'hffff_ffff_ffff_ffff;
+    CapFat fat = unpackCap({tc.tag, tc.capability});
+    Bit #(66) len = getLengthFat(fat,getTempFields(fat));
+    return len[65:64] == 2'b00 ? len[63:0] : 64'hffff_ffff_ffff_ffff;
     //return len[65:2];
-    
+    /*
     Bit#(65) top = fv_getTop(tc);
     Bit#(65) bot = fv_getBase(tc);
     Bit#(65) len = top - bot;
     let out = len[63:0];
     if(len[64] == 1'b1)
         out = 64'hffff_ffff_ffff_ffff;
-    return out;
+    return out;*/
+    
 endfunction
 
 function Bit #(15) fv_getPerms (Tagged_Capability tc);
@@ -1511,7 +1540,7 @@ function Bool fv_checkValid_Execute (Tagged_Capability rs1);
 endfunction
 
 function Bool fv_checkRange_simplified (Tagged_Capability rs1);
-	UInt #(6) exp  = unpack(fv_getExp(rs1));
+	UInt #(9) exp  = unpack(fv_getExp(rs1));
     // If it's less we're in the container below, if it's greater 
     // we're in the one above.
     return ((rs1.capability[63:0] >> exp) == zeroExtend(fv_getB(rs1)));
@@ -1522,8 +1551,7 @@ function Bool fv_checkRange_withLen (Tagged_Capability rs1, Bit#(4) bytes);
     Bit #(64) top    = fv_getTop (rs1)[63:0];
     Bool out = True;
     Bit #(64) addr   = rs1.capability[63:0];
-    Bit #(64) by = zeroExtend(bytes);
-    if ((addr + by > top) || (addr < base)) // Bounds violation
+    if ((addr + zeroExtend(bytes) > top) || (addr < base)) // Bounds violation
         out = False;
     return out;
 endfunction

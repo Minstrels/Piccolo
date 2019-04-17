@@ -153,11 +153,14 @@ Tagged_Capability tc_zero =
 
 // NULL capability
 // TODO: top correct?
+/*
 Tagged_Capability tc_null =
         Tagged_Capability {
             tag: 1'b0,
             capability: cap_null
-        };
+        };*/
+        
+Tagged_Capability tc_null = from129Bit(packCap(nullCap));
 
 // In the reduced model, we don't actually need a top field - we include
 // it for compatibility.
