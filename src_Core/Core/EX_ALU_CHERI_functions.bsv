@@ -1284,7 +1284,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
                 alu_outputs.control = CONTROL_TRAP;
             end
-        end*/
+        end
         else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin // 0x00
             Bit#(5) op_spec = inputs.decoded_instr.rs2;
             Tagged_Capability controller = (op_spec[4] == 1'b1) ? inputs.rs1_val : inputs.ddc;
