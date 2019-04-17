@@ -731,7 +731,7 @@ endfunction
 
 // Exception Codes in mcause
 
-typedef Bit #(4) Exc_Code;
+typedef Bit #(5) Exc_Code;
 
 // When Interrupt = 1 (interrupt)
 
