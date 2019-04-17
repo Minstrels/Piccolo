@@ -1533,18 +1533,7 @@ function Bit #(65) fv_getTop  (Tagged_Capability tc);
 endfunction
 
 function Bit #(64) fv_getLen(Tagged_Capability tc);
-    CapFat fat = unpackCap({tc.tag, tc.capability});
-    Bit #(66) len = getLengthFat(fat,getTempFields(fat));
-    return len[65:64] == 2'b00 ? len[63:0] : 64'hffff_ffff_ffff_ffff;
-    //return len[65:2];
-    /*
-    Bit#(65) top = fv_getTop(tc);
-    Bit#(65) bot = fv_getBase(tc);
-    Bit#(65) len = top - bot;
-    let out = len[63:0];
-    if(len[64] == 1'b1)
-        out = 64'hffff_ffff_ffff_ffff;
-    return out;*/
+    return ((fv_getT(tc) - fv_getB(tc)) << fv_getExp(tc));
     
 endfunction
 
@@ -1569,10 +1558,16 @@ function Bool fv_checkValid_Execute (Tagged_Capability rs1);
     return out;
 endfunction
 
+function Bool fv_simpleRange_withLen(Tagged_Capability tc, Bit#(4) bytes);
+	UInt #(9) exp  = unpack(fv_getExp(rs1));
+    Addr lower = tc.capability[63:0];
+    Addr upper = lower + bytes - 1;
+    Bit#(64) B = zeroExtend(fv_getB(tc));
+    return (lower >> exp == B) && (upper >> exp == B);
+endfunction
+
 function Bool fv_checkRange_simplified (Tagged_Capability rs1);
 	UInt #(9) exp  = unpack(fv_getExp(rs1));
-    // If it's less we're in the container below, if it's greater 
-    // we're in the one above.
     return ((rs1.capability[63:0] >> exp) == zeroExtend(fv_getB(rs1)));
 endfunction
 
@@ -1581,7 +1576,7 @@ function Bool fv_checkRange_withLen (Tagged_Capability rs1, Bit#(4) bytes);
     Bit #(64) top    = fv_getTop (rs1)[63:0];
     Bool out = True;
     Bit #(64) addr   = rs1.capability[63:0];
-    if ((addr + zeroExtend(bytes) > top) || (addr < base)) // Bounds violation
+    if ((addr + zeroExtend(bytes) - 1 > top) || (addr < base)) // Bounds violation
         out = False;
     return out;
 endfunction
