@@ -230,6 +230,7 @@ typedef enum {  OP_Stage2_ALU         // Pass-through (non mem, M, FD, AMO)
 	      
 `ifdef CHERI
           , OP_Stage2_CLR
+          , OP_Stage2_CRET
 `endif
 
 `ifdef SHIFT_SERIAL

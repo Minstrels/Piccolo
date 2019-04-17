@@ -1219,15 +1219,45 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         // instead, thereby preventing the need for an unnecessary special case to get the right registers for
         // this specific instruction?
         else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
-            if (inputs.decoded_instr.rs2 == 5'h1f) begin
+            let selector = instr_rs2 (inputs.instr);
+            let cb = inputs.rs1_val;
+            let cs = inputs.rs2_val;
+            if (selector == 5'h1f) begin
                 alu_outputs.exc_code = exc_code_CRETURN;
                 alu_outputs.control = CONTROL_TRAP;
             end
-            else if (inputs.decoded_instr.rs2 == 5'h00) begin
-                
+            else if (selector == 5'h00) begin
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+                if (cb.tag == 1'b0 || cs.tag == 1'b0)
+                    alu_outputs.control = CONTROL_TRAP;
+                else if (!fv_checkSealed(cb) || !fv_checkSealed(cs))
+                    alu_outputs.control = CONTROL_TRAP;
+                else if (fv_getOType(cs) != fv_getOType(cb)) // 114
+                    alu_outputs.control = CONTROL_TRAP;
+                else if (cb.capability[114] == 1'b1 || cs.capability[114] == 1'b0)
+                    alu_outputs.control = CONTROL_TRAP;
+                else if (!fv_checkRange_withLen(cs,4'h4))
+                    alu_outputs.control = CONTROL_TRAP;
             end
-            else if (inputs.decoded_instr.rs2 == 5'h01) begin
-                
+            else if (selector == 5'h01) begin
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+                if (cb.tag == 1'b0 || cs.tag == 1'b0)
+                    alu_outputs.control = CONTROL_TRAP;
+                else if (!fv_checkSealed(cb) || !fv_checkSealed(cs))
+                    alu_outputs.control = CONTROL_TRAP;
+                else if (fv_getOType(cs) != fv_getOType(cb)) // 114
+                    alu_outputs.control = CONTROL_TRAP;
+                else if (cb.capability[114] == 1'b1 || cs.capability[114] == 1'b0)
+                    alu_outputs.control = CONTROL_TRAP;
+                else if (!fv_checkRange_withLen(cs,4'h4))
+                    alu_outputs.control = CONTROL_TRAP;
+                else if (!fv_checkValid_Unseal(cs,cb))
+                    alu_outputs.control = CONTROL_TRAP;
+                else begin
+                    let new_pcc = fv_unseal(cs,cb);
+                    alu_outputs.exc_code = exc_code_INSTR_ADDR_MISALIGNED;
+                    alu_outputs.control = ((new_pcc.capability[1:0] == 2'b00) ? CONTROL_BRANCH : CONTROL_TRAP);
+                end
             end
             else begin
                 alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;

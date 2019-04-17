@@ -153,11 +153,14 @@ Tagged_Capability tc_zero =
 
 // NULL capability
 // TODO: top correct?
+/*
 Tagged_Capability tc_null =
         Tagged_Capability {
             tag: 1'b0,
             capability: cap_null
-        };
+        };*/
+        
+Tagged_Capability tc_null = from129Bit(packCap(nullCap));
 
 // In the reduced model, we don't actually need a top field - we include
 // it for compatibility.
@@ -459,11 +462,13 @@ typedef struct {
 deriving (FShow, Bits);
 
 function Decoded_Instr fv_decode (Instr instr);
-   return Decoded_Instr {opcode:    instr_opcode (instr),
+   let opc = instr_opcode (instr);
+   let f7  = instr_funct7 (instr);
+   return Decoded_Instr {opcode:    opc,
 
 			 rd:        instr_rd       (instr),
 			 rs1:       instr_rs1      (instr),
-			 rs2:       instr_rs2      (instr),
+			 rs2:       ((opc == op_CAP && f7 == f7_CCALLRET) ? instr_rd(instr) : instr_rs2 (instr)),
 			 rs3:       instr_rs3      (instr),
 			 csr:       instr_csr      (instr),
 `ifdef ISA_F
@@ -471,7 +476,7 @@ function Decoded_Instr fv_decode (Instr instr);
 `endif
 			 funct3:    instr_funct3   (instr),
 			 funct5:    instr_funct5   (instr),
-			 funct7:    instr_funct7   (instr),
+			 funct7:    f7,
 			 funct10:   instr_funct10  (instr),
 
 			 imm12_I:   instr_I_imm12  (instr),
