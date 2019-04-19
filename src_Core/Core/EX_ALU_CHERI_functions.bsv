@@ -359,7 +359,7 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
    
    if (!fv_checkRange_withLen(next, 4'h4)) begin
       alu_outputs.control = CONTROL_TRAP;
-      alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+      alu_outputs.exc_code = exc_code_BOUNDS_VIOLATED;
    end
    else begin
       alu_outputs.control   = ((next_pc [1] == 1'b0) ? CONTROL_BRANCH : CONTROL_TRAP);
@@ -405,7 +405,7 @@ function ALU_Outputs fv_JALR (ALU_Inputs inputs);
    
    if (!fv_checkRange_withLen(next, 4'h04)) begin
       alu_outputs.control = CONTROL_TRAP;
-      alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+      alu_outputs.exc_code = exc_code_BOUNDS_VIOLATED;
    end
    else if (next_pc[1] == 1'b1) begin
       alu_outputs.control = CONTROL_TRAP;
@@ -697,9 +697,9 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
              ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h4 :
              4'h8;
    let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, True, len);
-   if (!ddc_check)
-      alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-   alu_outputs.control   = ((!legal_LD || !ddc_check) ? CONTROL_TRAP : CONTROL_STRAIGHT);
+   if (legal_LD && ddc_check != exc_code_NO_EXCEPTION) // Illegal instruction takes priority.
+      alu_outputs.exc_code = ddc_check;
+   alu_outputs.control   = ((!legal_LD || (ddc_check != exc_code_NO_EXCEPTION)) ? CONTROL_TRAP : CONTROL_STRAIGHT);
    alu_outputs.op_stage2 = OP_Stage2_LD;
    alu_outputs.rd        = inputs.decoded_instr.rd;
    alu_outputs.addr      = change_tagged_addr(tc_zero, eaddr);
@@ -726,15 +726,15 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 		    );
 
    let alu_outputs = alu_outputs_base;
-   let len = ((funct3 == f3_LB) || (funct3 == f3_LBU)) ? 4'h1 :
-             ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h2 :
-             ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h4 :
-             4'h8;
+   let len = (funct3 == f3_SB) ? 4'h1 :
+             (funct3 == f3_SH) ? 4'h2 :
+             (funct3 == f3_SW) ? 4'h4 : 4'h8;
+             
    let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, False, len);
-   if (!ddc_check)
-      alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+   if (legal_ST && ddc_check != exc_code_NO_EXCEPTION)
+      alu_outputs.exc_code = ddc_check;
 
-   alu_outputs.control   = ((!legal_ST || !ddc_check) ? CONTROL_TRAP : CONTROL_STRAIGHT);
+   alu_outputs.control   = ((!legal_ST || (ddc_check != exc_code_NO_EXCEPTION)) ? CONTROL_TRAP : CONTROL_STRAIGHT);
    alu_outputs.op_stage2 = OP_Stage2_ST;
    alu_outputs.addr      = change_tagged_addr(tc_zero, eaddr);
    alu_outputs.val2      = inputs.rs2_val;
@@ -1027,7 +1027,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         // they must be represented in the capability we're incrementing. Do we need to check overflow on the pointer?
         if (cs.tag == 1'b1 && fv_checkSealed(cs)) begin
             alu_outputs.control = CONTROL_TRAP;
-            alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
         end
         alu_outputs.val1 = increment_tagged_addr(cs, signExtend(inputs.decoded_instr.imm12_I));
     end
@@ -1039,28 +1039,32 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             alu_outputs = fv_CINSPECT_ETC (inputs);
         end
         else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin // 0x0b
-            if(!fv_checkValid_Seal(cs, ct)) begin
-                alu_outputs.control = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-            end
-            else begin
+            let check = fv_checkValid_Seal(cs, ct);
+            if (check == exc_code_NO_EXCEPTION)
                 alu_outputs.val1 = fv_seal(cs, ct);
+            else begin
+                alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.exc_code = check;
             end
         end
         else if (inputs.decoded_instr.funct7 == f7_CUNSEAL) begin // 0x0c
-            if(!fv_checkValid_Unseal(cs, ct)) begin
-                alu_outputs.control = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-            end
-            else begin
+            let check = fv_checkValid_Unseal(cs, ct);
+            if (check == exc_code_NO_EXCEPTION)
                 alu_outputs.val1 = fv_unseal(cs, ct);
+            else begin
+                alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.exc_code = check;
             end
         end
         else if (inputs.decoded_instr.funct7 == f7_ANDPERM) begin // 0x0d
             // TODO: Where do we get the permission bits from? Still using the same perms/uperms
             // split as in CHERI-MIPS, or just the 15-bit muperms field in the 128-bit version?
-            if (fv_checkSealed(cs) || (cs.tag == 1'b0)) begin
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            if (cs.tag == 1'b0) begin
+                alu_outputs.exc_code = exc_code_TAG_NOT_SET;
+                alu_outputs.control  = CONTROL_TRAP;
+            end
+            else if (fv_checkSealed(cs)) begin
+                alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
                 alu_outputs.control  = CONTROL_TRAP;
             end
             else begin
@@ -1075,7 +1079,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         else if (inputs.decoded_instr.funct7 == f7_SETOFFSET) begin // 0x0f
             if (fv_checkSealed(cs) && (cs.tag == 1'b1)) begin
                 alu_outputs.control  = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+                alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
             end
             else begin
                 let new_curs = ct.capability[63:0] + fv_getBase(cs)[63:0];
@@ -1089,7 +1093,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             Bit #(64) rs2_v = ct.capability[63:0];
             if (fv_checkSealed(cs) && (cs.tag == 1'b1) && (rs2_v != 0)) begin
                 alu_outputs.control  = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+                alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
             end
             else begin
                 Bit #(64) newOffset = cs.capability[63:0] + ct.capability[63:0];
@@ -1100,6 +1104,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             end
         end
         else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin // 0x08
+        `ifdef SIMPLERANGE
+        
+        `else
             if (fv_checkSealed(cs) || (cs.tag == 1'b0)) begin
                 alu_outputs.control  = CONTROL_TRAP;
                 alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
@@ -1114,22 +1121,30 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 end
                 alu_outputs.val1 = from129Bit(packCap(out));
             end
+        `endif
         end
         else if (inputs.decoded_instr.funct7 == f7_CSBOUNDSEX) begin // 0x09
-            if (fv_checkSealed(inputs.rs1_val) || (inputs.rs1_val.tag == 1'b0)) begin
+        `ifdef SIMPLERANGE
+        
+        `else
+            if (cs.tag == 1'b0) begin
                 alu_outputs.control  = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+                alu_outputs.exc_code = exc_code_TAG_NOT_SET;
+            end
+            else if (fv_checkSealed(cs)) begin
+                alu_outputs.control  = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
             end
             else begin
-                Bit #(64) addr = tagged_addr(inputs.rs2_val);
-                CapFat cap = unpackCap(to129Bit(inputs.rs1_val));
-                CapFat out = setBounds(cap, addr, True);
+                Bit #(64) addr = tagged_addr(ct);
+                CapFat out = setBounds(unpackCap(to129Bit(cs)), addr, True);
                 if (!out.isCapability) begin
                     alu_outputs.control  = CONTROL_TRAP;
                     alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
                 end
                 alu_outputs.val1 = from129Bit(packCap(out));
             end
+        `endif
         end
         else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin // 0x1d
             Bit#(20) ct_B      = fv_getB(inputs.rs2_val);
@@ -1174,18 +1189,19 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             IntXL ct_addr = unpack(tagged_addr(ct));
             if (cs.tag == 1'b0) begin
                 alu_outputs.control  = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+                alu_outputs.exc_code = exc_code_TAG_NOT_SET;
             end
             else if (ct.tag == 1'b0 || ct_addr == -1) begin
                 alu_outputs.val1 = cs;
             end
-            else if (!fv_checkValid_Seal(cs, ct)) begin
-                alu_outputs.control  = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-            end
             else begin
-                // TODO: Any further checking needed?
-                alu_outputs.val1 = fv_seal(cs, ct);
+                let check = fv_checkValid_Seal(cs, ct);
+                if (check == exc_code_NO_EXCEPTION)
+                    alu_outputs.val1 = fv_seal(cs, ct);
+                else begin
+                    alu_outputs.control = CONTROL_TRAP;
+                    alu_outputs.exc_code = check;
+                end
             end
         end
         // XXX: This instruction doesn't exactly match the merged register file mentality.
@@ -1243,46 +1259,25 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             let selector = instr_rs2 (inputs.instr);
             let cb = inputs.rs1_val;
             let cs = inputs.rs2_val;
-            if (selector == 5'h1f) begin
-                alu_outputs.exc_code = exc_code_CRETURN;
-                alu_outputs.control = CONTROL_TRAP;
-            end
-            else if (selector == 5'h00) begin
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-                if (cb.tag == 1'b0 || cs.tag == 1'b0)
+            let check = fv_checkValid_CCALLRET;
+            if (selector == 5'h01) begin
+                let new_pcc = fv_unseal(cs,cb);
+                alu_outputs.addr = new_pcc;
+                if (new_pcc.capability[1:0] != 2'b00) begin
                     alu_outputs.control = CONTROL_TRAP;
-                else if (!fv_checkSealed(cb) || !fv_checkSealed(cs))
-                    alu_outputs.control = CONTROL_TRAP;
-                else if (fv_getOType(cs) != fv_getOType(cb)) // 114
-                    alu_outputs.control = CONTROL_TRAP;
-                else if (cb.capability[114] == 1'b1 || cs.capability[114] == 1'b0)
-                    alu_outputs.control = CONTROL_TRAP;
-                else if (!fv_checkRange_withLen(cs,4'h4))
-                    alu_outputs.control = CONTROL_TRAP;
-            end
-            else if (selector == 5'h01) begin
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-                if (cb.tag == 1'b0 || cs.tag == 1'b0)
-                    alu_outputs.control = CONTROL_TRAP;
-                else if (!fv_checkSealed(cb) || !fv_checkSealed(cs))
-                    alu_outputs.control = CONTROL_TRAP;
-                else if (fv_getOType(cs) != fv_getOType(cb)) // 114
-                    alu_outputs.control = CONTROL_TRAP;
-                else if (cb.capability[114] == 1'b1 || cs.capability[114] == 1'b0)
-                    alu_outputs.control = CONTROL_TRAP;
-                else if (!fv_checkRange_withLen(cs,4'h4))
-                    alu_outputs.control = CONTROL_TRAP;
-                else if (!fv_checkValid_Unseal(cs,cb))
-                    alu_outputs.control = CONTROL_TRAP;
-                else begin
-                    let new_pcc = fv_unseal(cs,cb);
                     alu_outputs.exc_code = exc_code_INSTR_ADDR_MISALIGNED;
-                    alu_outputs.control = ((new_pcc.capability[1:0] == 2'b00) ? CONTROL_BRANCH : CONTROL_TRAP);
+                end 
+                else if (check != exc_code_NO_EXCEPTION) begin
+                    alu_outputs.control = CONTROL_TRAP;
+                    alu_outputs.exc_code = check;
+                end
+                else begin
+                    alu_outputs.control = CONTROL_BRANCH;
                 end
             end
             else begin
-                alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
                 alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.exc_code = check;
             end
         end*/
         else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin // 0x00
@@ -1378,14 +1373,13 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         // Since we're not using a pointer, we only need to add 4 here.
         alu_outputs.val1 = change_tagged_addr(inputs.pcc, inputs.pcc.capability[63:0] + 4);
         alu_outputs.addr = inputs.rs1_val;
-        if (!fv_checkValid_Execute (inputs.rs1_val)) begin
-            alu_outputs.control = CONTROL_TRAP;
-            alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-        end
-        else begin
-            // Other exception remaining is alignment.
+        let check = fv_checkValid_Execute (inputs.rs1_val);
+        if (check == exc_code_NO_EXCEPTION) begin
             alu_outputs.exc_code = exc_code_INSTR_ADDR_MISALIGNED;
             alu_outputs.control = ((rs1_cap[1:0] == 2'b00) ? CONTROL_BRANCH : CONTROL_TRAP);
+        end else begin
+            alu_outputs.control = CONTROL_TRAP;
+            alu_outputs.exc_code = check;
         end
     end
     // XXX: Comments in the spec suggest check-perm/type will be removed in future.
@@ -1433,18 +1427,18 @@ function Bool fv_checkMemoryTarget(Tagged_Capability tc, Bit#(5) spec);
     return out; 
 endfunction
 
-function Bool fv_checkOP_DDC(Tagged_Capability ddc, Addr target, Bool load, Bit#(4) len);
-    let out = True;
+function Exc_Code fv_checkOP_DDC(Tagged_Capability ddc, Addr target, Bool load, Bit#(4) len);
+    let out = exc_code_NO_EXCEPTION;
     if (ddc.tag == 1'b0)
-        out = False;
+        out = exc_code_TAG_NOT_SET;
     else if (fv_checkSealed(ddc))
-        out = False;
+        out = exc_code_CAPABILITY_SEALED;
     else if (load && ddc.capability[116] == 1'b0)
-        out = False;
+        out = exc_code_PERMISSION_DENIED;
     else if (!load && ddc.capability[117] == 1'b0)
-        out = False;
+        out = exc_code_PERMISSION_DENIED;
     else if (!fv_checkRange_withLen(change_tagged_addr(ddc, target), len))
-        out = False;
+        out = exc_code_BOUNDS_VIOLATED;
     return out;
 endfunction
 
@@ -1460,8 +1454,8 @@ function Bool fv_checkSealed(Tagged_Capability tc);
     return (tc.capability[104] == 1'b1);
 endfunction
 
-function Bit #(9)  fv_getExp  (Tagged_Capability tc);
-    return zeroExtend(tc.capability[110:105]);
+function Bit #(6)  fv_getExp  (Tagged_Capability tc);
+    return tc.capability[110:105];
 endfunction
 
 function Bit #(20)  fv_getB  (Tagged_Capability tc);
@@ -1543,19 +1537,32 @@ endfunction
 
 // Bool = trap status, capability = target.
 // This checks capability dereferencing issues for execution (e.g. JALR).
-function Bool fv_checkValid_Execute (Tagged_Capability rs1);
-    let out = True;
+function Exc_Code fv_checkValid_Execute (Tagged_Capability rs1);
+    let out = exc_code_NO_EXCEPTION;
     Bit #(15) perms  = rs1.capability[127:113];
     Bool      sealed = fv_checkSealed(rs1);
     if (rs1.tag == 1'b0) // Tag violation
-        out = False;
+        out = exc_code_TAG_NOT_SET;
     if (sealed) // Seal violation
-        out = False;
+        out = exc_code_CAPABILITY_SEALED;
     if (perms[1] == 1'b0) // Permit_Execute violation
-        out = False;
+        out = exc_code_PERMISSION_DENIED;
     if (!fv_checkRange_withLen(rs1, 4'h04)) // Bounds violation - 4-byte value
-        out = False;
+        out = exc_code_BOUNDS_VIOLATED;
     return out;
+endfunction
+
+
+`ifdef SIMPLERANGE
+
+function Addr fv_simple_lower(Tagged_Capability tc);
+    let exp = fv_getExp(tc);
+    return fv_getB(tc) << exp;
+endfunction
+
+function Addr fv_simple_higher(Tagged_Capability tc);
+    let exp = fv_getExp(tc);
+    return (fv_getB(tc) + 1) << exp;
 endfunction
 
 function Bool fv_simpleRange_withLen(Tagged_Capability tc, Bit#(4) bytes);
@@ -1571,7 +1578,96 @@ function Bool fv_checkRange_simplified (Tagged_Capability rs1);
     return ((rs1.capability[63:0] >> exp) == zeroExtend(fv_getB(rs1)));
 endfunction
 
+function Tuple3#(Exc_Code, Bool, Tagged_Capability) fv_setBounds_simple(Tagged_Capability old, Addr rt);
+    let trap = exc_code_NO_EXCEPTION;  // Exception of any form - tag, seal etc
+    let exact = True; // Whether the resulting bounds are exact or not
+    let ret = tc_zero;
+    if (old.tag == 1'b0)
+        trap = exc_code_TAG_NOT_SET;
+    else if (fv_checkSealed(old))
+        trap = exc_code_CAPABILITY_SEALED;
+    else begin
+        // Derive and check bounds 
+        //  - consider potential reduction in range for small values of rt.
+        // Check new bounds are representable
+        //  - "small compartments need to be at the bottom, in order to reach the top we need a bigger exponent"
+        // Simplification - exact requires that rt is a power of 2.
+        let requested_lower = tagged_addr(old);
+        let requested_higher = requested_lower + rt - 1;
+        let old_lower = fv_simple_lower(old);
+        let old_higher = fv_simple_higher(old);
+        
+            // Requesting expanded or inverted bounds
+        if (requested_lower < old_lower
+                || requested_higher >= old_higher
+                || requested_higher < requested_lower)
+            trap = exc_code_BOUNDS_INVALID;
+        else begin
+            // Find the largest limiting exponent (anything smaller won't be able to cover the requested range)
+            // If the desired range isn't exact we need to round up, we can only represent ranges of 2^n
+            Bit#(7) rangeZeros = 64;
+            if (countOnes(rt) == 1) begin
+                rangeZeros = countZerosMSB(rt);
+            end 
+            else begin
+                exact = False;
+                rangeZeros = (countZerosMSB(rt) - 1);
+            end
+            // ^ One LESS zero means one MORE step to the left
+            Bit#(6) chosenExp = fv_deriveExp(rangeZeros);
+            Bit#(6) botExp = fv_deriveExp(countZerosMSB(requested_lower));
+            
+            if (botExp > chosenExp) begin // SB20 greater means range expanded
+                exact = False;
+                chosenExp = botExp;
+            end  
+            else if (chosenExp > botExp) begin // range bit greater implies necessary loss of precision in bottom address
+                exact = False;
+            end
+            Bit#(20) newB = (requested_lower >> chosenExp)[19:0];
+            
+            if (!fv_checkBounds(newB, chosenExp, old_lower, old_higher)) begin
+                trap = exc_code_BOUNDS_INVALID;
+            end
+            // Inexact if lower bits if previously set bits were dropped or range was rounded up.
+            // Mask on lower bits - either shift up and invert, or find corresponding exponent and shift down.
+            else if ((requested_lower & ~(64'hffff_ffff_ffff_ffff << chosenExp)) != 0) begin
+                exact = False;
+            end
+            ret = fv_assemble_new_bounds(old, newB, chosenExp);
+        end
+    end
+    return tuple3(trap, exact, ret);
+endfunction
+
+function Bit#(6) fv_deriveExp(Bit#(7) leading);
+    Bit#(6) exp = 0;
+    if (leading < 44)
+        exp = 44 - leading;
+    return exp;
+endfunction
+
+function Tagged_Capability fv_assemble_new_bounds(Tagged_Capability old, Bit#(20) newB, Bit#(6) newExp);
+    return Tagged_Capability{
+        tag: old.tag,
+        capability: {old.capability[127:111], newExp, old.capability[104], newB, old.capability[83:0]};
+    };
+endfunction
+
+// , Addr request_low, Addr request_hi - This should be true by construction?
+function Bool fv_checkBounds(Bit#(20) newB, Bit#(9) newExp, Addr old_lo, Addr old_hi);
+    Bit#(64) top = zeroExtend((newB + 1) << newExp);
+    Bit#(64) bot = zeroExtend(newB << newExp);
+    return (top <= old_hi && bot >= old_lo);
+endfunction
+
+`endif
+
+
 function Bool fv_checkRange_withLen (Tagged_Capability rs1, Bit#(4) bytes);
+`ifdef SIMPLERANGE
+    return fv_simpleRange_withLen(rs1,bytes);
+`else
     Bit #(64) base   = fv_getBase(rs1)[63:0];
     Bit #(64) top    = fv_getTop (rs1)[63:0];
     Bool out = True;
@@ -1579,6 +1675,7 @@ function Bool fv_checkRange_withLen (Tagged_Capability rs1, Bit#(4) bytes);
     if ((addr + zeroExtend(bytes) - 1 > top) || (addr < base)) // Bounds violation
         out = False;
     return out;
+`endif
 endfunction
 
 function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
@@ -1594,26 +1691,46 @@ function Bit#(24) fv_getOType(Tagged_Capability rs1);
     return {rs1_cap[95:84], rs1_cap[75:64]};
 endfunction
 
-function Bool fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt);
-    let out = True;
+function Exc_Code fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt);
+    let out = exc_code_NO_EXCEPTION;
     if (rs.tag == 0 || rt.tag == 0)                 // Tag violation
-        out = False;
-    if (fv_checkSealed(rs) || fv_checkSealed(rt))   // Sealed violation
-        out = False;
-    if (rt.capability[120] == 0)                    // Permit_Seal violation
-        out = False;
-    if (!fv_checkRange_withLen(rt, 4'h01))           // Bounds violation
-        out = False;
-    if (cap_addr(rt.capability) > 64'h0000_0000_00ff_ffff)      // Max_OType violation
-        out = False;
-    if ((rs.capability[95:84] != 0) || (rs.capability[75:64] != 0)) // Bounds representation violation
-        out = False;
+        out = exc_code_TAG_NOT_SET;
+    else if (fv_checkSealed(rs) || fv_checkSealed(rt))   // Sealed violation
+        out = exc_code_CAPABILITY_SEALED;
+    else if (rt.capability[120] == 0)                    // Permit_Seal violation
+        out = exc_code_PERMISSION_DENIED;
+    else if (!fv_checkRange_withLen(rt, 4'h01))           // Bounds violation
+        out = exc_code_BOUNDS_VIOLATED;
+`ifdef SIMPLERANGE
+    // SIMPLERANGE simply uses the TOP field as a permanent Otype field. We have a lower number of bits available, but
+    // 2^20 should really be enough. With more consideration we could use some of the reserved bits, use a "0 = unsealed"
+    // semantic or suchlike, but this would require a huge pile of adjustment which isn't particularly worthwhile in this
+    // proof-of-concept
+    else if (cap_addr(rt.capability) > 64'h0000_0000_000f_ffff)
+`else
+    else if (cap_addr(rt.capability) > 64'h0000_0000_00ff_ffff)      // Max_OType violation
+        out = exc_code_BOUNDS_VIOLATED;
+    else if ((rs.capability[95:84] != 0) || (rs.capability[75:64] != 0)) // Bounds representation violation
+        out = exc_code_BOUNDS_INVALID;
+`endif
     return out;
 endfunction
 
 function Tagged_Capability fv_seal(Tagged_Capability rs, Tagged_Capability rt);
     let rsc = rs.capability;
     let rtc = rt.capability;
+    `ifdef SIMPLERANGE
+    return Tagged_Capability {
+        tag: rs.tag,
+        capability: {   
+                      rsc[127:105], // perms, reserved, exponent
+                      1'b1,         // sealed
+                      rsc[103:84],  // bottom
+                      rtc[19:0],    // otype
+                      rsc[63:0]     // cursor address
+                    }
+    };
+    `else
     return Tagged_Capability {
         tag: rs.tag,
         capability: {   
@@ -1626,20 +1743,23 @@ function Tagged_Capability fv_seal(Tagged_Capability rs, Tagged_Capability rt);
                       rsc[63:0]     // cursor address
                     }
     };
+    `endif
 endfunction
 
-function Bool fv_checkValid_Unseal(Tagged_Capability rs, Tagged_Capability rt);
+function Exc_Code fv_checkValid_Unseal(Tagged_Capability rs, Tagged_Capability rt);
     let rsc = rs.capability;
     let rtc = rt.capability;
-    let out = True;
+    let out = exc_code_NO_EXCEPTION;
     if (rs.tag == 0 || rt.tag == 0)                     // Tag violation
-        out = False;
-    else if ((!fv_checkSealed(rs)) || fv_checkSealed(rt))    // Sealed violation
-        out = False;
+        out = exc_code_TAG_NOT_SET;
+    else if (!fv_checkSealed(rs))                       // Sealed violation
+        out = exc_code_CAPABILITY_NOT_SEALED;
+    else if (fv_checkSealed(rt))
+        out = exc_code_CAPABILITY_SEALED;
     else if ({rsc[95:84], rsc[75:64]} != rtc[23:0])          // OType violation
-        out = False;
+        out = exc_code_OBJECT_TYPE_INVALID;
     else if (rtc[122] == 0)                                  // Permit_Unseal violation
-        out = False;
+        out = exc_code_PERMISSION_DENIED;
     return out;
 endfunction
 
@@ -1647,6 +1767,18 @@ function Tagged_Capability fv_unseal(Tagged_Capability rs, Tagged_Capability rt)
     let rsc = rs.capability;
     let rtc = rt.capability;
     Bit #(1) global = rsc[113] & rtc[113]; // Global bit set to AND of both input capabilities.
+    `ifdef SIMPLERANGE
+    return Tagged_Capability {
+        tag: rs.tag,
+        capability: { 
+                      rsc[127:114], // perms 1-14
+                      global,       // global bit (perm 0)
+                      rsc[112:105], // reserved, exponent
+                      1'b0,         // sealed
+                      rsc[103:0]    // We can keep the bottom, otype and address fields exactly as they are
+                    }
+    };
+    `else
     return Tagged_Capability {
         tag: rs.tag,
         capability: { 
@@ -1661,8 +1793,10 @@ function Tagged_Capability fv_unseal(Tagged_Capability rs, Tagged_Capability rt)
                       rsc[63:0]     // cursor address
                     }
     };
+    `endif
 endfunction
 
+/*
 function Bool fv_checkValid_CopyType(Tagged_Capability rs, Tagged_Capability rt);
     Bit #(64) otype = zeroExtend(fv_getOType(rt));
     if (rs.tag == 1'b0)                 // Tag violation
@@ -1676,6 +1810,44 @@ function Bool fv_checkValid_CopyType(Tagged_Capability rs, Tagged_Capability rt)
         return False;
     else
         return True;
+endfunction*/
+
+function Exc_Code fv_checkValid_CCALLRET(Tagged_Capability cb, Tagged_Capability cs, Bit#(5) selector);
+    let out = exc_code_NO_EXCEPTION;
+    if (selector == 5'h1f) begin
+        out = exc_code_CRETURN;
+    end
+    else if (selector == 5'h00) begin
+        if (cb.tag == 1'b0 || cs.tag == 1'b0)
+            out = exc_code_TAG_NOT_SET;
+        else if (!fv_checkSealed(cb) || !fv_checkSealed(cs))
+            out = exc_code_CAPABILITY_NOT_SEALED;
+        else if (fv_getOType(cs) != fv_getOType(cb))
+            out = exc_code_OBJECT_TYPE_INVALID;
+        else if (cb.capability[114] == 1'b1 || cs.capability[114] == 1'b0)
+            out = exc_code_PERMISSION_DENIED;
+        else if (!fv_checkRange_withLen(cs,4'h4))
+            out = exc_code_BOUNDS_VIOLATED;
+        else
+            out = exc_code_CCALL;
+    else if (selector == 5'h01) begin
+        if (cb.tag == 1'b0 || cs.tag == 1'b0)
+            out = exc_code_TAG_NOT_SET;
+        else if (!fv_checkSealed(cb) || !fv_checkSealed(cs))
+            out = exc_code_CAPABILITY_NOT_SEALED;
+        else if (fv_getOType(cs) != fv_getOType(cb))
+            out = exc_code_OBJECT_TYPE_INVALID;
+        else if (cb.capability[114] == 1'b1 || cs.capability[114] == 1'b0)
+            out = exc_code_PERMISSION_DENIED;
+        else if (!fv_checkRange_withLen(cs,4'h4))
+            out = exc_code_BOUNDS_VIOLATED;
+        else begin
+            out = fv_checkValid_Unseal(cs,cb);
+    end
+    else begin
+        out = exc_code_ILLEGAL_INSTRUCTION;
+    end
+    return out;
 endfunction
 
 // ================================================================
