@@ -731,7 +731,40 @@ endfunction
 
 // Exception Codes in mcause
 
+`ifdef CHERI
+typedef Bit #(5) Exc_Code;
+
+// Having a "Null" exception saves a tiny bit of space when we might otherwise have to return a
+// code AND a boolean. Not exactly an amazing design, but there's precedent elsewhere.
+Exc_Code  exc_code_NO_EXCEPTION           = 16;
+// Unspecified capability exception
+Exc_Code  exc_code_CAPABILITY_EXC         = 17;
+// Tag bit not set on capability operation
+Exc_Code  exc_code_TAG_NOT_SET            = 18;
+// Address being accessed is out of bounds
+Exc_Code  exc_code_BOUNDS_VIOLATED        = 19;
+// Permission bit not set for operation in progress.    TODO: Maybe split this into individual permissions?
+Exc_Code  exc_code_PERMISSION_DENIED      = 20;
+// Capability is sealed for an operation requiring unsealed values.
+Exc_Code  exc_code_CAPABILITY_SEALED      = 21;
+// Vice versa to the above. 
+Exc_Code  exc_code_CAPABILITY_NOT_SEALED  = 22;
+// For CSetBounds - trying to expand bounds or use inverted values (e.g. from overflow)
+Exc_Code  exc_code_BOUNDS_INVALID         = 23;
+// For CSetBoundsExact, self-explanatory
+Exc_Code  exc_code_BOUNDS_INEXACT         = 23;
+// Sealed capability's otype is incorrect
+Exc_Code  exc_code_OBJECT_TYPE_INVALID    = 24;
+// Code for a CRETURN instruction
+Exc_Code  exc_code_CRETURN                = 25;
+// Code for a 0-code CCALL instruction
+Exc_Code  exc_code_CCALL                  = 26;
+
+// Leaves codes 27-31 available.
+
+`else
 typedef Bit #(4) Exc_Code;
+`endif
 
 // When Interrupt = 1 (interrupt)
 
@@ -765,20 +798,12 @@ Exc_Code  exc_code_STORE_AMO_ACCESS_FAULT        = 7;
 
 Exc_Code  exc_code_ECALL_FROM_U                  = 8;
 Exc_Code  exc_code_ECALL_FROM_S                  = 9;
-`ifdef CHERI
-Exc_Code  exc_code_CAPABILITY_EXC                = 10;
-`else
 Exc_Code  exc_code_RESERVED_10                   = 10;
-`endif
 Exc_Code  exc_code_ECALL_FROM_M                  = 11;
 
 Exc_Code  exc_code_INSTR_PAGE_FAULT              = 12;
 Exc_Code  exc_code_LOAD_PAGE_FAULT               = 13;
-`ifdef CHERI
-Exc_Code  exc_code_CRETURN                       = 14;
-`else
 Exc_Code  exc_code_RESERVED_14                   = 14;
-`endif
 Exc_Code  exc_code_STORE_AMO_PAGE_FAULT          = 15;
 
 
