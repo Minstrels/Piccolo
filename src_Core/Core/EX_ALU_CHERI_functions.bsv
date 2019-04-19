@@ -1279,7 +1279,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.control = CONTROL_TRAP;
                 alu_outputs.exc_code = check;
             end
-        end*/
+        end
         else if (inputs.decoded_instr.funct7 == f7_MEMORYOP) begin // 0x00
             Bit#(5) op_spec = inputs.decoded_instr.rs2;
             Tagged_Capability controller = (op_spec[4] == 1'b1) ? inputs.rs1_val : inputs.ddc;
@@ -1527,7 +1527,7 @@ function Bit #(65) fv_getTop  (Tagged_Capability tc);
 endfunction
 
 function Bit #(64) fv_getLen(Tagged_Capability tc);
-    return ((fv_getT(tc) - fv_getB(tc)) << fv_getExp(tc));
+    return (zeroExtend(fv_getT(tc) - fv_getB(tc)) << fv_getExp(tc));
     
 endfunction
 
@@ -1566,11 +1566,11 @@ function Addr fv_simple_higher(Tagged_Capability tc);
 endfunction
 
 function Bool fv_simpleRange_withLen(Tagged_Capability tc, Bit#(4) bytes);
-	UInt #(9) exp  = unpack(fv_getExp(rs1));
+	UInt #(9) exp  = unpack(fv_getExp(tc));
     Addr lower = tc.capability[63:0];
-    Addr upper = lower + bytes - 1;
-    Bit#(64) B = zeroExtend(fv_getB(tc));
-    return (lower >> exp == B) && (upper >> exp == B);
+    Addr upper = lower + zeroExtend(bytes) - 1;
+    Bit#(64) b = zeroExtend(fv_getB(tc));
+    return (lower >> exp == b) && (upper >> exp == b);
 endfunction
 
 function Bool fv_checkRange_simplified (Tagged_Capability rs1);
