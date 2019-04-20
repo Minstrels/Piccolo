@@ -200,6 +200,40 @@ BSC_CHERIV += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D RVFI \
 		-D RVFI_DII \
 		+RTS -K64M -RTS  -show-range-conflict
+		
+BSC_SIMPLER += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
+		-suppress-warnings G0020 \
+		-D RV64 \
+		-D FABRIC64 \
+		-D SV39 \
+		-D SIMPLERANGE \
+		-D ISA_PRIV_M \
+		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
+		-D Near_Mem_Caches \
+		-D SHIFT_BARREL \
+		-D MULT_SERIAL \
+		-D CSR_REGFILE_UM \
+		-D CHERI \
+		-D CHERIDEBUG \
+		-D RVFI \
+		-D RVFI_DII \
+		+RTS -K64M -RTS  -show-range-conflict
+		
+BSC_SIMPLEV += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
+		-suppress-warnings G0020 \
+		-D RV64 \
+		-D FABRIC64 \
+		-D SV39 \
+		-D ISA_PRIV_M \
+		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
+		-D SIMPLERANGE \
+		-D Near_Mem_Caches \
+		-D SHIFT_BARREL \
+		-D CSR_REGFILE_UM \
+		-D CHERI \
+		+RTS -K64M -RTS  -show-range-conflict
 
 # ================================================================
 # Make targets
@@ -221,6 +255,8 @@ TMP_GDB = -bdir gdb -simdir gdb -info-dir gdb -vdir gdb
 TMP_CHERI = -bdir cherib -simdir cherib -info-dir cherib -vdir cherib
 TMP_CHERISIM = -bdir cherisim -simdir cherisim -info-dir cherisim -vdir cherisim
 TMP_CHERIV = -bdir cheriv -simdir cheriv -info-dir cheriv -vdir cheriv
+TMP_SIMPLER = -bdir simpleR -simdir simpleR -info-dir simpleR -vdir simpleR
+TMP_SIMPLEV = -bdir simpleV -simdir simpleV -info-dir simpleV -vdir simpleV
 
 .PHONY: sim32
 sim32:
@@ -367,6 +403,30 @@ cheriV:
 	@echo "INFO: linked CHERI objects into Bluesim executable"
 
 
+.PHONY: simpleR
+simpleR:
+	@echo "INFO: Compiling CHERI RVFI for simulation"
+	mkdir -p simpleR
+	bsc -u -elab -sim -D SIM $(USEFUL_FLAGS) $(TMP_SIMPLER) $(BSC_SIMPLER) $(BSC_PATH) $(TOPFILE)
+	@echo "INFO: Compilation completed, starting linking"
+	CC=gcc-4.8 CXX=g++-4.8 bsc -sim -parallel-sim-link 8 \
+		$(TMP_SIMPLER)\
+		-e $(RVFI_DII_TOPMODULE) -o ./$(BSIM_EXE_SIMPLER) \
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c \
+		$(REPO)/src_Verifier/BSV-RVFI-DII/SocketPacketUtils/socket_packet_utils.c
+	@echo "INFO: linked CHERI objects into Bluesim executable"
+
+
+.PHONY: simpleV
+simpleV:
+	@echo "INFO: Compiling CHERI..."
+	mkdir -p simpleV
+	bsc -u -elab -verilog $(USEFUL_FLAGS) $(TMP_SIMPLEV) $(BSC_SIMPLEV) $(BSC_PATH) ../src_Core/Core/CPU.bsv
+	@echo "INFO: Compilation completed"
+
+
+
 BSIM_EXE_FILE = exe_HW_bsim
 BSIM_EXE_FILE64 = exe_HW_bsim64
 BSIM_EXE_FV64 = exe_HW_vs64
@@ -374,6 +434,7 @@ BSIM_EXE_FV32 = exe_HW_vs32
 BSIM_EXE_FILEGDB = exe_GDB
 BSIM_EXE_CHERI = exe_CHERI
 BSIM_EXE_CHERIV = exe_CHERIV
+BSIM_EXE_SIMPLER = exe_simpleR
 
 BSC_C_FLAGS += \
 	-Xc++  -D_GLIBCXX_USE_CXX11_ABI=0 \
