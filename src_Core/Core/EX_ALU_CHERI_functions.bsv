@@ -1103,30 +1103,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 };
             end
         end
-        else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS) begin // 0x08
-        `ifdef SIMPLERANGE
-        
-        `else
-            if (fv_checkSealed(cs) || (cs.tag == 1'b0)) begin
-                alu_outputs.control  = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-            end
-            else begin
-                Bit #(64) addr = tagged_addr(ct);
-                CapFat cap = unpackCap(to129Bit(cs));
-                CapFat out = setBounds(cap, addr, False);
-                if (!out.isCapability) begin
-                    alu_outputs.control  = CONTROL_TRAP;
-                    alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
-                end
-                alu_outputs.val1 = from129Bit(packCap(out));
-            end
-        `endif
-        end
-        else if (inputs.decoded_instr.funct7 == f7_CSBOUNDSEX) begin // 0x09
-        `ifdef SIMPLERANGE
-        
-        `else
+        // 0x08, 0x09
+        else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDS || inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX) begin
             if (cs.tag == 1'b0) begin
                 alu_outputs.control  = CONTROL_TRAP;
                 alu_outputs.exc_code = exc_code_TAG_NOT_SET;
@@ -1136,15 +1114,33 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
             end
             else begin
-                Bit #(64) addr = tagged_addr(ct);
-                CapFat out = setBounds(unpackCap(to129Bit(cs)), addr, True);
+                Bit#(64) range = tagged_addr(ct);
+`ifdef SIMPLERANGE
+                match {
+                    .trap,
+                    .exact,
+                    .out
+                } = fv_setBounds_simple(cs,range);
+                if (trap != exc_code_NO_EXCEPTION) begin
+                    alu_outputs.control = CONTROL_TRAP;
+                    alu_outputs.exc_code = trap;
+                end
+                else if (inputs.decoded_instr.funct7 == f7_CSETBOUNDSEX && !exact) begin
+                    alu_outputs.control = CONTROL_TRAP;
+                    alu_outputs.exc_code = exc_code_BOUNDS_INEXACT;
+                end
+                else begin
+                    alu_outputs.val1 = out;
+                end
+`else
+                CapFat out = setBounds(unpackCap(to129Bit(cs)), range, (inputs.decoded_instr.funct7 == f7_CSBOUNDSEX));
                 if (!out.isCapability) begin
                     alu_outputs.control  = CONTROL_TRAP;
                     alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
                 end
                 alu_outputs.val1 = from129Bit(packCap(out));
+`endif
             end
-        `endif
         end
         else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin // 0x1d
             Bit#(20) ct_B      = fv_getB(inputs.rs2_val);
@@ -1171,19 +1167,22 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                     capability: {ct_perms, 2'b0, ct_exp, 1'b0, ct_B, ct_T, ct_cursor}
             };
         end
+        // This is a poor choice to be included in the specification. 
+        // Semantically there's minimal difference from CGetType, and the definitions as given in
+        // the MIPS version make little sense when only the 128-bit capability is used.
         else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin // 0x1e
-            // TODO: This surely has a different definition in RISC-V?
-            //       Setting Base and Offset fields to -1 doesn't make sense when
-            //       one is condensed and the other doesn't exist.
-            /*
-            if(!fv_checkValid_CopyType(cs,ct)) begin
+            if (cs.tag == 0) begin
                 alu_outputs.control = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+                alu_outputs.exc_code = exc_code_TAG_NOT_SET;
             end
-            else if (fv_checkSealed(ct))
-                alu_outputs.val1 = change_tagged_addr(cs, zeroExtend(fv_getOType(ct)));
-            else // TODO: How do we appropriately set the bottom value to -1 in 128-bit representation?
-                alu_outputs.val1 = change_tagged_addr(tc_null, pack(-1));*/
+            else if fv_checkSealed(cs) begin
+                alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
+            end
+            else if (!fv_checksealed(ct))begin
+                    alu_outputs.val1 = change_tagged_addr(tc_zero, -1);
+            end
+            else if (!fv_checkRange_withLen(changed_tagged_addr(cs, fv_getOType(ct)), 1))
         end
         else if (inputs.decoded_instr.funct7 == f7_CCSEAL) begin // 0x1f
             IntXL ct_addr = unpack(tagged_addr(ct));
@@ -1233,15 +1232,11 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             Bool perm_valid = unpack(inputs.pcc.capability[123]);
             Bool all_valid = addr_valid && priv_valid && perm_valid;
             alu_outputs.ccsr_valid = (inputs.decoded_instr.rs1 != 0);
-            
             // Access/read fault, or trying to write PCC
             if ((!all_valid) || (ccsr_addr == 0 && (inputs.decoded_instr.rs1 != 0))) begin
-                // Permissions are a capability issue, addressing and privilege fit existing exception paradigms.
-                // TODO: Priority?
-                alu_outputs.exc_code = (!perm_valid ? exc_code_CAPABILITY_EXC : exc_code_ILLEGAL_INSTRUCTION);
+                alu_outputs.exc_code = (!(addr_valid && priv_valid) ? exc_code_ILLEGAL_INSTRUCTION exc_code_PERMISSION_DENIED);
                 alu_outputs.control = CONTROL_TRAP;
                 alu_outputs.ccsr_valid = False;
-                
                 alu_outputs.val1 = change_tagged_addr(tc_zero,zeroExtend({pack(priv_valid), pack(perm_valid),pack(addr_valid)}));
             end
             else begin
@@ -1285,9 +1280,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             Tagged_Capability controller = (op_spec[4] == 1'b1) ? inputs.rs1_val : inputs.ddc;
             alu_outputs.addr = controller;
 			alu_outputs.val2 = inputs.rs1_val;
-            if(!fv_checkMemoryTarget(controller, op_spec)) begin
+            let check = fv_checkMemoryTarget(controller, op_spec);
+            if(check != exc_code_NO_EXCEPTION) begin
                 alu_outputs.control  = CONTROL_TRAP;
-                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+                alu_outputs.exc_code = check;
             end
             else if (fv_isLoad(op_spec)) begin
                 alu_outputs.op_stage2 = OP_Stage2_LD;
@@ -1403,27 +1399,24 @@ endfunction : fv_CINSPECT_ETC
 // ----------------------------------------------------------------
 // UTILITY FUNCTIONS
 
-function Bool fv_checkMemoryTarget(Tagged_Capability tc, Bit#(5) spec);
+function Exc_Code fv_checkMemoryTarget(Tagged_Capability tc, Bit#(5) spec);
     Bit#(CLEN) cpv = tc.capability;
-    let out = True;
+    let out = exc_code_NO_EXCEPTION;
     if (tc.tag == 1'b0)     // Tag not set
-        out = False;
+        out = exc_code_TAG_NOT_SET;
     else if (fv_checkSealed(tc)) // Capability sealed
-        out = False;
+        out = exc_code_CAPABILITY_SEALED;
     else if ((spec[3:2] == 2'b11)) // Illegal spec
-        out = False;
-    else if (fv_isLoad(spec) && cpv[116] == 1'b0) // Load permission
-        out = False;
-    else if (fv_isLoad(spec) && cpv[117] == 1'b0) // Store permission
-        out = False;
-    else if ((spec[1:0] == 2'b00) && fv_checkRange_withLen(tc,4'h1)) // Bounds
-        out = False;
-    else if ((spec[1:0] == 2'b01) && fv_checkRange_withLen(tc,4'h2))
-        out = False;
-    else if ((spec[1:0] == 2'b10) && fv_checkRange_withLen(tc,4'h4))
-        out = False;
-    else if ((spec[1:0] == 2'b11) && fv_checkRange_withLen(tc,4'h8))
-        out = False;
+        out = exc_code_ILLEGAL_INSTRUCTION;
+    else if ((fv_isLoad(spec) && cpv[117] == 1'b0) || (fv_isLoad(spec) && cpv[116] == 1'b0)) // Store permission
+        out = exc_code_PERMISSION_DENIED;
+    else if (
+        ((spec[1:0] == 2'b00) && fv_checkRange_withLen(tc,4'h1)) || // Bounds
+        ((spec[1:0] == 2'b01) && fv_checkRange_withLen(tc,4'h2)) ||
+        ((spec[1:0] == 2'b10) && fv_checkRange_withLen(tc,4'h4)) ||
+        ((spec[1:0] == 2'b11) && fv_checkRange_withLen(tc,4'h8))
+        )
+        out = exc_code_BOUNDS_VIOLATED;
     return out; 
 endfunction
 
@@ -1527,8 +1520,11 @@ function Bit #(65) fv_getTop  (Tagged_Capability tc);
 endfunction
 
 function Bit #(64) fv_getLen(Tagged_Capability tc);
+`ifdef SIMPLERANGE
+    return (64'b1 << fv_getExp(tc));
+`else
     return (zeroExtend(fv_getT(tc) - fv_getB(tc)) << fv_getExp(tc));
-    
+`endif
 endfunction
 
 function Bit #(15) fv_getPerms (Tagged_Capability tc);
@@ -1596,45 +1592,18 @@ function Tuple3#(Exc_Code, Bool, Tagged_Capability) fv_setBounds_simple(Tagged_C
         let requested_higher = requested_lower + rt - 1;
         let old_lower = fv_simple_lower(old);
         let old_higher = fv_simple_higher(old);
-        
-            // Requesting expanded or inverted bounds
-        if (requested_lower < old_lower
-                || requested_higher >= old_higher
-                || requested_higher < requested_lower)
+        if (requested_lower < old_lower || requested_higher > old_higher || requested_higher < requested_lower)
             trap = exc_code_BOUNDS_INVALID;
         else begin
-            // Find the largest limiting exponent (anything smaller won't be able to cover the requested range)
-            // If the desired range isn't exact we need to round up, we can only represent ranges of 2^n
-            Bit#(7) rangeZeros = 64;
-            if (countOnes(rt) == 1) begin
-                rangeZeros = countZerosMSB(rt);
-            end 
-            else begin
-                exact = False;
-                rangeZeros = (countZerosMSB(rt) - 1);
-            end
-            // ^ One LESS zero means one MORE step to the left
-            Bit#(6) chosenExp = fv_deriveExp(rangeZeros);
-            Bit#(6) botExp = fv_deriveExp(countZerosMSB(requested_lower));
-            
-            if (botExp > chosenExp) begin // SB20 greater means range expanded
-                exact = False;
-                chosenExp = botExp;
-            end  
-            else if (chosenExp > botExp) begin // range bit greater implies necessary loss of precision in bottom address
-                exact = False;
-            end
-            Bit#(20) newB = (requested_lower >> chosenExp)[19:0];
-            
-            if (!fv_checkBounds(newB, chosenExp, old_lower, old_higher)) begin
+            match  { 
+                .exp,
+                .bot,
+                .bounds_exact
+            } = fv_derive_2(requested_lower, rt);
+            if (!fv_checkBounds(bot, exp, old_lower, old_higher)) begin
                 trap = exc_code_BOUNDS_INVALID;
             end
-            // Inexact if lower bits if previously set bits were dropped or range was rounded up.
-            // Mask on lower bits - either shift up and invert, or find corresponding exponent and shift down.
-            else if ((requested_lower & ~(64'hffff_ffff_ffff_ffff << chosenExp)) != 0) begin
-                exact = False;
-            end
-            ret = fv_assemble_new_bounds(old, newB, chosenExp);
+            ret = fv_assemble_new_bounds(old,bot,exp);
         end
     end
     return tuple3(trap, exact, ret);
@@ -1645,6 +1614,26 @@ function Bit#(6) fv_deriveExp(Bit#(7) leading);
     if (leading < 44)
         exp = 44 - leading;
     return exp;
+endfunction
+
+// (Exponent, exact)
+function Tuple3#(Bit#(6), Bit#(20), Bool) fv_derive_2(Bit#(64) base, Bit#(64) range);
+    let exact = True;
+    let chosenExp = 0;
+    Bit#(6) rangeExp = (64 - countZerosMSB(range));
+    chosenExp = rangeExp;
+    // If we have an non-power-of-two range (range inexact) or we're rounding the base down (base inexact)
+    if ((countOnes(range) > 1) || ((base & ~(64'hffff_ffff_ffff_ffff << rangeExp)) != 0)) begin
+        rangeExp += 1;
+        exact = False;
+    end
+    Bit#(6) baseExp = fv_deriveExp(countZerosMSB(base));
+    if (baseExp > rangeExp) begin // Need a larger exponent to represent base (range inexact)
+        exact = False;
+        chosenExp = baseExp;
+    end
+    let b = (base >> chosenExp)[19:0];
+    return tuple3(chosenExp, b, exact);
 endfunction
 
 function Tagged_Capability fv_assemble_new_bounds(Tagged_Capability old, Bit#(20) newB, Bit#(6) newExp);
