@@ -1039,7 +1039,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         if (inputs.decoded_instr.funct7 == f7_CAPINSPECT) begin // 0x7f
             alu_outputs = fv_CINSPECT_ETC (inputs);
         end
-        /*else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin // 0x0b
+        else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin // 0x0b
             let check = fv_checkValid_Seal(cs, ct);
             if (check == exc_code_NO_EXCEPTION)
                 alu_outputs.val1 = fv_seal(cs, ct);
@@ -1047,7 +1047,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.control = CONTROL_TRAP;
                 alu_outputs.exc_code = check;
             end
-        end*/
+        end
         else if (inputs.decoded_instr.funct7 == f7_CUNSEAL) begin // 0x0c
             let check = fv_checkValid_Unseal(cs, ct);
             if (check == exc_code_NO_EXCEPTION)
@@ -1142,7 +1142,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.val1 = from129Bit(packCap(out));
 `endif
             end
-        end/*
+        end
         else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin // 0x1d
             Bit#(20) ct_B      = fv_getB(inputs.rs2_val);
             Bit#(20) ct_T      = fv_getT(inputs.rs2_val);
@@ -1152,15 +1152,17 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             Bit#(64) ct_cursor = inputs.rs2_val.capability[63:0];
             Bit#(6)  ct_exp    = fv_getExp(inputs.rs2_val)[5:0];
             
-            Bit#(64) cb_bot   = fv_getBase(inputs.rs1_val)[63:0];
-            Bit#(64) cb_top   = fv_getTop(inputs.rs1_val)[63:0];
-            Bit#(15) cb_perms = fv_getPerms(inputs.rs1_val);
+            Bit#(64) cb_bot    = fv_getBase(inputs.rs1_val)[63:0];
+            Bit#(64) cb_top    = fv_getTop(inputs.rs1_val)[63:0];
+            Bit#(15) cb_perms  = fv_getPerms(inputs.rs1_val);
             
             // Any permissions in ct but not cb
             Bool perms_valid = ((ct_perms & ~cb_perms) > 0);
-            Bool bounds_valid = (ct_bot >= cb_bot && ct_top <= cb_top);
+            Bool bounds_valid = !(ct_bot < cb_bot || ct_top > cb_top);
             Bit#(1) tag = inputs.rs1_val.tag;
-            if (!perms_valid || !bounds_valid)
+            if ((!perms_valid))
+                tag = 1'b0;
+            else if (!bounds_valid)
                 tag = 1'b0;
             // TODO: What do we do if the conditions AREN'T met?
             alu_outputs.val1 = Tagged_Capability {
@@ -1171,6 +1173,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         // This is a poor choice to be included in the specification. 
         // Semantically there's minimal difference from CGetType, and the definitions as given in
         // the MIPS version make little sense when only the 128-bit capability is used.
+        
         else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin // 0x1e
             if (cs.tag == 0) begin
                 alu_outputs.control = CONTROL_TRAP;
@@ -1212,7 +1215,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                     alu_outputs.exc_code = check;
                 end
             end
-        end*/
+        end
         // XXX: This instruction doesn't exactly match the merged register file mentality.
         else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin // 0x12
             if (inputs.rs1_val.tag == 1'b0) begin
@@ -1260,7 +1263,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         // for every other instruction, when the selector field (unique to this instruction) could be put there
         // instead, thereby preventing the need for an unnecessary special case to get the right registers for
         // this specific instruction?
-        /*else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
+        else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
             let selector = instr_rs2 (inputs.instr);
             let cb2 = inputs.rs1_val;
             let cs2 = inputs.rs2_val;
@@ -1304,7 +1307,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             else begin
                 alu_outputs.control  = CONTROL_TRAP;
             end
-        end*/
+        end
         else begin
             alu_outputs.control = CONTROL_TRAP;
         end
@@ -1324,7 +1327,7 @@ endfunction : fv_CHERI
 // only the 128-bit representation is used the separation looks irrational.
 function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     let alu_outputs = alu_outputs_base;
-    /*alu_outputs.op_stage2 = OP_Stage2_ALU;
+    alu_outputs.op_stage2 = OP_Stage2_ALU;
     let rs1_cap  = inputs.rs1_val.capability;
     // Some CHERI ops have a 5-bit decoding value in the rs2 position rather than the
     // standard position used in the base RISC-V ISA.
@@ -1375,6 +1378,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     else if (inputs.decoded_instr.rs2 == f5_CMOVE)      begin
         alu_outputs.val1 = inputs.rs1_val;
     end
+    
     else if (inputs.decoded_instr.rs2 == f5_CJALR)      begin
         // Since we're not using a pointer, we only need to add 4 here.
         alu_outputs.val1 = change_tagged_addr(inputs.pcc, inputs.pcc.capability[63:0] + 4);
@@ -1388,13 +1392,6 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
             alu_outputs.exc_code = check;
         end
     end
-    // XXX: Comments in the spec suggest check-perm/type will be removed in future.
-    /*else if (inputs.decoded_instr.rs2 == f5_CCHECKPERM) begin
-    
-    end
-    else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
-        
-    end
     // for ALU output values, we'll set val1[9:8] = quadrant, val1[7:0] = mask
     else if (inputs.decoded_instr.rs2 == f5_FASTCLEAR)  begin
         alu_outputs.val1 = change_tagged_addr(tc_zero, extend({inputs.instr[19:18], inputs.instr[17:15], inputs.instr[11:7]}));
@@ -1402,7 +1399,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     end
     else begin
         alu_outputs.control = CONTROL_TRAP;
-    end*/
+    end
     return alu_outputs;
 endfunction : fv_CINSPECT_ETC
 
@@ -1512,17 +1509,23 @@ function Bit #(65) fv_getBase (Tagged_Capability tc);
 endfunction
 
 function Bit #(65) fv_getTop  (Tagged_Capability tc);
+`ifdef SIMPLERANGE
+    Bit #(20) b = fv_getB(tc);
+    Bit #(6)  e = fv_getExp(tc);
+    Bit #(65) out = (extend(b+1) << e);
+    return out;
+`else
     // As defined in 3.3.8/page 81.
     Bit #(6)  e = fv_getExp(tc);
     Bit #(20) t = fv_getT(tc);
     Bit #(20) b = fv_getB(tc);
     Bit #(65) result = 65'h0;
-    Bit #(65) addrbits = tc.capability[(63+e):(20+e)];
+    Bit #(65) addrbits = zeroExtend(tc.capability[63:0]) & (65'hffff_ffff_ffff_ffff << (20+e));
     Bit #(65) upperbits = (addrbits + fv_topCorrection(tc.capability[63:0],b,t,e)) << (20 + e);
     Bit #(65) lowerbits = zeroExtend(t << e);
     
-    return upperbits + lowerbits;
-    //return fv_topCorrection(tc.capability[63:0],unpack(b),unpack(t),e);
+    return upperbits+lowerbits;
+`endif
 endfunction
 
 function Bit #(64) fv_getLen(Tagged_Capability tc);
