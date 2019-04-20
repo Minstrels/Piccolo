@@ -696,10 +696,10 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
              ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h2 :
              ((funct3 == f3_LH) || (funct3 == f3_LHU)) ? 4'h4 :
              4'h8;
-   let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, True, len);
+   /*let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, True, len);
    if (legal_LD && ddc_check != exc_code_NO_EXCEPTION) // Illegal instruction takes priority.
       alu_outputs.exc_code = ddc_check;
-   alu_outputs.control   = ((!legal_LD || (ddc_check != exc_code_NO_EXCEPTION)) ? CONTROL_TRAP : CONTROL_STRAIGHT);
+   alu_outputs.control   = ((!legal_LD || (ddc_check != exc_code_NO_EXCEPTION)) ? CONTROL_TRAP : CONTROL_STRAIGHT);*/
    alu_outputs.op_stage2 = OP_Stage2_LD;
    alu_outputs.rd        = inputs.decoded_instr.rd;
    alu_outputs.addr      = change_tagged_addr(tc_zero, eaddr);
@@ -730,11 +730,11 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
              (funct3 == f3_SH) ? 4'h2 :
              (funct3 == f3_SW) ? 4'h4 : 4'h8;
              
-   let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, False, len);
+   /*let ddc_check = fv_checkOP_DDC(inputs.ddc, eaddr, False, len);
    if (legal_ST && ddc_check != exc_code_NO_EXCEPTION)
       alu_outputs.exc_code = ddc_check;
 
-   alu_outputs.control   = ((!legal_ST || (ddc_check != exc_code_NO_EXCEPTION)) ? CONTROL_TRAP : CONTROL_STRAIGHT);
+   alu_outputs.control   = ((!legal_ST || (ddc_check != exc_code_NO_EXCEPTION)) ? CONTROL_TRAP : CONTROL_STRAIGHT);*/
    alu_outputs.op_stage2 = OP_Stage2_ST;
    alu_outputs.addr      = change_tagged_addr(tc_zero, eaddr);
    alu_outputs.val2      = inputs.rs2_val;
@@ -1034,11 +1034,12 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     else if (inputs.decoded_instr.funct3 == 3'b010) begin // CSetBoundsImmediate
         
     end
+    
     else if (inputs.decoded_instr.funct3 == 3'b000) begin // Other instructions
         if (inputs.decoded_instr.funct7 == f7_CAPINSPECT) begin // 0x7f
             alu_outputs = fv_CINSPECT_ETC (inputs);
         end
-        else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin // 0x0b
+        /*else if (inputs.decoded_instr.funct7 == f7_CSEAL) begin // 0x0b
             let check = fv_checkValid_Seal(cs, ct);
             if (check == exc_code_NO_EXCEPTION)
                 alu_outputs.val1 = fv_seal(cs, ct);
@@ -1046,7 +1047,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.control = CONTROL_TRAP;
                 alu_outputs.exc_code = check;
             end
-        end
+        end*/
         else if (inputs.decoded_instr.funct7 == f7_CUNSEAL) begin // 0x0c
             let check = fv_checkValid_Unseal(cs, ct);
             if (check == exc_code_NO_EXCEPTION)
@@ -1141,7 +1142,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.val1 = from129Bit(packCap(out));
 `endif
             end
-        end
+        end/*
         else if (inputs.decoded_instr.funct7 == f7_CBUILDCAP) begin // 0x1d
             Bit#(20) ct_B      = fv_getB(inputs.rs2_val);
             Bit#(20) ct_T      = fv_getT(inputs.rs2_val);
@@ -1211,7 +1212,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                     alu_outputs.exc_code = check;
                 end
             end
-        end
+        end*/
         // XXX: This instruction doesn't exactly match the merged register file mentality.
         else if (inputs.decoded_instr.funct7 == f7_CTOPTR) begin // 0x12
             if (inputs.rs1_val.tag == 1'b0) begin
@@ -1259,7 +1260,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         // for every other instruction, when the selector field (unique to this instruction) could be put there
         // instead, thereby preventing the need for an unnecessary special case to get the right registers for
         // this specific instruction?
-        else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
+        /*else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
             let selector = instr_rs2 (inputs.instr);
             let cb2 = inputs.rs1_val;
             let cs2 = inputs.rs2_val;
@@ -1303,7 +1304,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             else begin
                 alu_outputs.control  = CONTROL_TRAP;
             end
-        end
+        end*/
         else begin
             alu_outputs.control = CONTROL_TRAP;
         end
@@ -1323,7 +1324,7 @@ endfunction : fv_CHERI
 // only the 128-bit representation is used the separation looks irrational.
 function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     let alu_outputs = alu_outputs_base;
-    alu_outputs.op_stage2 = OP_Stage2_ALU;
+    /*alu_outputs.op_stage2 = OP_Stage2_ALU;
     let rs1_cap  = inputs.rs1_val.capability;
     // Some CHERI ops have a 5-bit decoding value in the rs2 position rather than the
     // standard position used in the base RISC-V ISA.
@@ -1393,7 +1394,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     end
     else if (inputs.decoded_instr.rs2 == f5_CCHECKTYPE) begin
         
-    end*/
+    end
     // for ALU output values, we'll set val1[9:8] = quadrant, val1[7:0] = mask
     else if (inputs.decoded_instr.rs2 == f5_FASTCLEAR)  begin
         alu_outputs.val1 = change_tagged_addr(tc_zero, extend({inputs.instr[19:18], inputs.instr[17:15], inputs.instr[11:7]}));
@@ -1401,7 +1402,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
     end
     else begin
         alu_outputs.control = CONTROL_TRAP;
-    end
+    end*/
     return alu_outputs;
 endfunction : fv_CINSPECT_ETC
 
@@ -1575,7 +1576,6 @@ function Bool fv_simpleRange_withLen(Tagged_Capability tc, Bit#(4) bytes);
 endfunction
 
 function Bool fv_checkRange_simplified (Tagged_Capability rs1);
-	//UInt #(6) exp  = unpack(fv_getExp(rs1));
     return ((rs1.capability[63:0] >> fv_getExp(rs1)) == zeroExtend(fv_getB(rs1)));
 endfunction
 
@@ -1617,7 +1617,7 @@ endfunction
 function Bit#(6) fv_deriveExp(Bit#(7) leading);
     Bit#(6) exp = 0;
     if (leading < 44)
-        exp = 44 - leading[5:0];
+        exp = (44 - leading)[5:0];
     return exp;
 endfunction
 
@@ -1625,7 +1625,7 @@ endfunction
 function Tuple3#(Bit#(6), Bit#(20), Bool) fv_derive_2(Bit#(64) base, Bit#(64) range);
     let exact = True;
     Bit#(6) chosenExp = 0;
-    Bit#(6) rangeExp = pack(64 - countZerosMSB(range))[5:0];
+    Bit#(6) rangeExp = (7'b100_0000 - pack(countZerosMSB(range)))[5:0];
     chosenExp = rangeExp;
     // If we have an non-power-of-two range (range inexact) or we're rounding the base down (base inexact)
     if ((countOnes(range) > 1) || ((base & ~(64'hffff_ffff_ffff_ffff << rangeExp)) != 0)) begin
@@ -1648,7 +1648,7 @@ function Tagged_Capability fv_assemble_new_bounds(Tagged_Capability old, Bit#(20
     };
 endfunction
 
-// , Addr request_low, Addr request_hi - This should be true by construction?
+// Addr request_low, Addr request_hi - This should be true by construction?
 function Bool fv_checkBounds(Bit#(20) newB, Bit#(6) newExp, Addr old_lo, Addr old_hi);
     Bit#(64) top = zeroExtend((newB + 1) << newExp);
     Bit#(64) bot = zeroExtend(newB << newExp);
