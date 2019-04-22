@@ -1565,7 +1565,7 @@ function Addr fv_simple_lower(Tagged_Capability tc);
     return zeroExtend(fv_getB(tc) << exp);
 endfunction
 
-function Addr fv_simple_higher(Tagged_Capability tc);
+function Addr fv_simple_top(Tagged_Capability tc);
     let exp = fv_getExp(tc);
     return zeroExtend((fv_getB(tc) + 1) << exp);
 endfunction
@@ -1597,18 +1597,18 @@ function Tuple3#(Exc_Code, Bool, Tagged_Capability) fv_setBounds_simple(Tagged_C
         //  - "small compartments need to be at the bottom, in order to reach the top we need a bigger exponent"
         // Simplification - exact requires that rt is a power of 2.
         let requested_lower = tagged_addr(old);
-        let requested_higher = requested_lower + rt - 1;
+        let requested_top = requested_lower + rt;
         let old_lower = fv_simple_lower(old);
-        let old_higher = fv_simple_higher(old);
-        if (requested_lower < old_lower || requested_higher > old_higher || requested_higher < requested_lower)
+        let old_top = fv_simple_top(old);
+        if (requested_lower < old_lower || requested_top > old_top || requested_top <= requested_lower)
             trap = exc_code_BOUNDS_INVALID;
         else begin
             match  { 
                 .exp,
                 .bot,
                 .bounds_exact
-            } = fv_derive_2(requested_lower, rt);
-            if (!fv_checkBounds(bot, exp, old_lower, old_higher)) begin
+            } = fv_deriveBounds(requested_lower, rt);
+            if (!fv_checkBounds(bot, exp, old_lower, old_top)) begin
                 trap = exc_code_BOUNDS_INVALID;
             end
             ret = fv_assemble_new_bounds(old,bot,exp);
@@ -1617,31 +1617,38 @@ function Tuple3#(Exc_Code, Bool, Tagged_Capability) fv_setBounds_simple(Tagged_C
     return tuple3(trap, exact, ret);
 endfunction
 
-function Bit#(6) fv_deriveExp(Bit#(7) leading);
+function Bit#(6) fv_getBExp(Bit#(7) leading);
     Bit#(6) exp = 0;
     if (leading < 44)
         exp = (44 - leading)[5:0];
     return exp;
 endfunction
 
-// (Exponent, exact)
-function Tuple3#(Bit#(6), Bit#(20), Bool) fv_derive_2(Bit#(64) base, Bit#(64) range);
+function Tuple3#(Bit#(6), Bit#(20), Bool) fv_deriveBounds(Bit#(64) base, Bit#(64) range);
     let exact = True;
     Bit#(6) chosenExp = 0;
-    Bit#(6) rangeExp = (7'b100_0000 - pack(countZerosMSB(range)))[5:0];
-    chosenExp = rangeExp;
-    // If we have an non-power-of-two range (range inexact) or we're rounding the base down (base inexact)
-    if ((countOnes(range) > 1) || ((base & ~(64'hffff_ffff_ffff_ffff << rangeExp)) != 0)) begin
-        rangeExp = rangeExp + 1;
+    Bit#(6) rangeExp = pack(63 - countZerosMSB(range))[5:0];
+    Bit#(64) top = base + range;
+    // If we have an non-power-of-two range (range inexact) or we'll get one when we round the base down.
+    if ((countOnes(range) > 1) || ((top & ~(64'hffff_ffff_ffff_ffff << rangeExp)) != 0)) begin
+        rangeExp = fv_updateExp_increase(base,top,rangeExp);
         exact = False;
     end
-    Bit#(6) baseExp = fv_deriveExp(pack(countZerosMSB(base)));
+    chosenExp = rangeExp;
+    Bit#(6) baseExp = fv_getBExp(pack(countZerosMSB(base)));
     if (baseExp > rangeExp) begin // Need a larger exponent to represent base (range inexact)
         exact = False;
         chosenExp = baseExp;
     end
     let b = (base >> chosenExp)[19:0];
     return tuple3(chosenExp, b, exact);
+endfunction
+
+// Naive method was to just add 1, but doesn't account for carrying.
+function Bit#(6) fv_updateExp_increase(Bit#(64) base, Bit#(64) top, Bit#(6) lastExp);
+    Bit#(64) diff = ((base | ~top) >> lastExp);
+    Bit#(7) increase = pack(countZerosLSB(diff));
+    return (increase + zeroExtend(lastExp))[5:0];
 endfunction
 
 function Tagged_Capability fv_assemble_new_bounds(Tagged_Capability old, Bit#(20) newB, Bit#(6) newExp);
@@ -1651,11 +1658,10 @@ function Tagged_Capability fv_assemble_new_bounds(Tagged_Capability old, Bit#(20
     };
 endfunction
 
-// Addr request_low, Addr request_hi - This should be true by construction?
-function Bool fv_checkBounds(Bit#(20) newB, Bit#(6) newExp, Addr old_lo, Addr old_hi);
+function Bool fv_checkBounds(Bit#(20) newB, Bit#(6) newExp, Addr old_low, Addr old_top);
     Bit#(64) top = zeroExtend((newB + 1) << newExp);
     Bit#(64) bot = zeroExtend(newB << newExp);
-    return (top <= old_hi && bot >= old_lo);
+    return (top <= old_top && bot >= old_low);
 endfunction
 
 `endif
