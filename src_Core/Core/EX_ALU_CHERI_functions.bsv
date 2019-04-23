@@ -1646,7 +1646,7 @@ endfunction
 
 // Naive method was to just add 1, but doesn't account for carrying.
 function Bit#(6) fv_updateExp_increase(Bit#(64) base, Bit#(64) top, Bit#(6) lastExp);
-    Bit#(64) diff = ((base | ~top) >> lastExp);
+    Bit#(64) diff = ((~(base | top)) >> lastExp);
     Bit#(7) increase = pack(countZerosLSB(diff));
     return (increase + zeroExtend(lastExp))[5:0];
 endfunction
