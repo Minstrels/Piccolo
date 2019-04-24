@@ -469,7 +469,11 @@ function Decoded_Instr fv_decode (Instr instr);
 
 			 rd:        instr_rd       (instr),
 			 rs1:       instr_rs1      (instr),
+`ifdef CHERI
 			 rs2:       ((opc == op_CAP && f7 == f7_CCALLRET) ? instr_rd(instr) : instr_rs2 (instr)),
+`else
+             rs2:       instr_rs2 (instr),
+`endif
 			 rs3:       instr_rs3      (instr),
 			 csr:       instr_csr      (instr),
 `ifdef ISA_F

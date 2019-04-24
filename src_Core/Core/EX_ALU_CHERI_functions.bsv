@@ -1721,7 +1721,11 @@ endfunction
 
 function Bit#(24) fv_getOType(Tagged_Capability rs1);
     let rs1_cap = rs1.capability;
+    `ifdef SIMPLERANGE
+    return zeroExtend(rs1_cap[83:64]);
+    `else
     return {rs1_cap[95:84], rs1_cap[75:64]};
+    `endif
 endfunction
 
 function Exc_Code fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt);

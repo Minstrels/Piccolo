@@ -556,8 +556,9 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    Bool stage1_is_csrrx = ((stage1.out.ostatus == OSTATUS_PIPE)
 			   && fn_instr_is_csrrx (stage1.out.data_to_stage2.instr));
    
+   `ifdef CHERI
    Bool stage3_is_clearing = stage3.is_busy();
-    
+   `endif
 
    // ================================================================
 
@@ -604,7 +605,9 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 		 && (! pipe_is_empty)
 		 && (! pipe_has_nonpipe)
 		 && (! stage1_halted)
+		 `ifdef CHERI
          && (! stage3.is_busy)
+         `endif
          );
 
         Bool stage3_full = (stage3.out.ostatus != OSTATUS_EMPTY);

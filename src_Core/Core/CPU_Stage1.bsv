@@ -159,11 +159,10 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       Bool rs2_busy = (busy2a || busy2b);
       `ifdef CHERI
       Tagged_Capability rs2_val_bypassed = ((rs2 == 0) ? tc_zero : rs2b);
+      Bool gpr_busy = gpr_regfile.is_busy();
       `else
       Word rs2_val_bypassed = ((rs2 == 0) ? 0 : rs2b);
       `endif
-      
-      Bool gpr_busy = gpr_regfile.is_busy();
       
       // ----------------
       // CSR address-based protection checks
@@ -238,9 +237,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       end
       
       // Stall-based fast clearing
+      `ifdef CHERI
       else if (gpr_regfile.is_busy()) begin
 	    output_stage1.ostatus = OSTATUS_BUSY;
       end
+      `endif
 
       // Trap on ICache exception
       else if (icache.exc) begin

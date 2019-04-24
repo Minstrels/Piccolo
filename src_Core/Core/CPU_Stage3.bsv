@@ -67,7 +67,9 @@ interface CPU_Stage3_IFC;
    // ---- Debugging
    method Action show_state;
    
+   `ifdef CHERI
    method Bool is_busy();
+   `endif
 endinterface
 
 // ================================================================
@@ -104,9 +106,12 @@ module mkCPU_Stage3 #(Bit #(4)         verbosity,
    // Combinational output function
    function Output_Stage3 fv_out;
       let bypass = bypass_base;
+      `ifdef CHERI
       if (instr_is_clear(rg_stage3.instr))
          bypass.bypass_state = BYPASS_CLEAR;
-      else if (rg_full && rg_stage3.rd_valid)
+      else 
+      `endif
+      if (rg_full && rg_stage3.rd_valid)
          bypass.bypass_state = BYPASS_RD_RDVAL;
       return Output_Stage3 {
                          ostatus: (rg_full ? OSTATUS_PIPE : OSTATUS_EMPTY),
@@ -173,9 +178,11 @@ module mkCPU_Stage3 #(Bit #(4)         verbosity,
 	 $display ("    S3 state: empty");
    endmethod
    
+   `ifdef CHERI
    method Bool is_busy();
      return gpr_regfile.is_busy();
    endmethod
+   `endif
    
 endmodule
 
