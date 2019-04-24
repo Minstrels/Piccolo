@@ -76,7 +76,6 @@ BSC_FLAGS64 += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D ISA_PRIV_M \
 		-D ISA_PRIV_U \
 		-D ISA_PRIV_S \
-		-D ISA_M \
 		-D Near_Mem_Caches \
 		-D SHIFT_BARREL \
 		-D MULT_SERIAL\
