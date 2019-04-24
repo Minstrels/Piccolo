@@ -153,14 +153,13 @@ Tagged_Capability tc_zero =
 
 // NULL capability
 // TODO: top correct?
-/*
+
 Tagged_Capability tc_null =
         Tagged_Capability {
             tag: 1'b0,
             capability: cap_null
-        };*/
+        };
         
-Tagged_Capability tc_null = from129Bit(packCap(nullCap));
 
 // In the reduced model, we don't actually need a top field - we include
 // it for compatibility.
@@ -307,6 +306,8 @@ Bit #(7) f7_MEMORYOP    = 7'b00_000_00; // = 0x00
 Bit #(7) f7_CMOVE       = 7'b11_111_11; // = 0x7f
 Bit #(7) f7_CJALR       = 7'b11_111_11; // = 0x7f
 Bit #(7) f7_CLEARTAG    = 7'b11_111_11; // = 0x7f
+
+Bit #(7) f7_SUBSET      = 7'b01_000_00; // = 0x20
 
 // The majority of capability F3s are 0; these are the exceptions.
 Bit #(3) f3_CINCOFFIMM  = 3'b001; // = 0x1f

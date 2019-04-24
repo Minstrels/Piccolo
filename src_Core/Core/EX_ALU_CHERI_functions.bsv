@@ -45,9 +45,6 @@ import ISA_Decls   :: *;
 import CPU_Globals :: *; 
 import Capability128ccLibs :: *;
 
-// TODO: Which fields definitely need to be capabilities/tagged_capabilities?
-//       Do we need anything from PCC?
-
 // ================================================================
 // ALU inputs
 
@@ -198,7 +195,6 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
       alu_outputs = fv_JALR (inputs);
 
 `ifdef ISA_M
-   // TODO: CHERI ops for M extension?
 
    // OP 'M' ops MUL/ MULH/ MULHSU/ MULHU/ DIV/ DIVU/ REM/ REMU
    else if (   (inputs.decoded_instr.opcode == op_OP)
@@ -282,10 +278,6 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
     
     else if (inputs.decoded_instr.opcode == op_CAP)
         alu_outputs = fv_CHERI (inputs);
-    
-    // Currently only using 0x5b opcode
-    //else if (inputs.decoded_instr.opcode == op_CAPLOAD)
-        //alu_outputs = fv_CHERILOAD (inputs);
 
    else begin
       alu_outputs.control = CONTROL_TRAP;
@@ -760,7 +752,6 @@ endfunction
 // ----------------------------------------------------------------
 // System instructions
 
-// TODO: More permissions checks
 function ALU_Outputs fv_SYSTEM (ALU_Inputs inputs);
    let funct3      = inputs.decoded_instr.funct3;
    let alu_outputs = alu_outputs_base;
@@ -851,7 +842,6 @@ function ALU_Outputs fv_SYSTEM (ALU_Inputs inputs);
    end
 
    // CSRR{W,C,S} and CSRR{W,C,S}I
-   // TODO: Do we require permissions checks for existing CSRs, or only capability CSRs?
    else begin
       let  csr_val = inputs.csr_val;
       WordXL rs1_val = ((funct3 [2] == 1)
@@ -1032,9 +1022,38 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         alu_outputs.val1 = increment_tagged_addr(cs, signExtend(inputs.decoded_instr.imm12_I));
     end
     else if (inputs.decoded_instr.funct3 == 3'b010) begin // CSetBoundsImmediate
-        
+        if (cs.tag == 1'b0) begin
+            alu_outputs.control  = CONTROL_TRAP;
+            alu_outputs.exc_code = exc_code_TAG_NOT_SET;
+        end
+        else if (fv_checkSealed(cs)) begin
+            alu_outputs.control  = CONTROL_TRAP;
+            alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
+        end
+        else begin
+            Bit#(64) range = zeroExtend(inputs.decoded_instr.imm12_I);
+`ifdef SIMPLERANGE
+            match {
+                .trap,
+                .exact,
+                .out
+            } = fv_setBounds_simple(cs,range);
+            if (trap != exc_code_NO_EXCEPTION) begin
+                alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.exc_code = trap;
+            end
+            else begin
+                alu_outputs.val1 = out;
+            end
+`else
+            CapFat out = setBounds(unpackCap(to129Bit(cs)), range, False);
+            if (!out.isCapability) begin
+                alu_outputs.control  = CONTROL_TRAP;
+                alu_outputs.exc_code = exc_code_CAPABILITY_EXC;
+            end
+            alu_outputs.val1 = from129Bit(packCap(out));
+`endif
     end
-    
     else if (inputs.decoded_instr.funct3 == 3'b000) begin // Other instructions
         if (inputs.decoded_instr.funct7 == f7_CAPINSPECT) begin // 0x7f
             alu_outputs = fv_CINSPECT_ETC (inputs);
@@ -1307,6 +1326,16 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             else begin
                 alu_outputs.control  = CONTROL_TRAP;
             end
+        end
+        else if (inputs.decoded_instr.funct7 == f7_SUBSET) begin
+            // Checking ct within cs
+            `ifdef SIMPLERANGE
+            let boundscheck = fv_check_bounds(fv_getB(ct), fv_getExp(ct), fv_simple_lower(cs), fv_simple_top(cs));
+            `else
+            let boundscheck = fv_getTop(ct) <= fv_getTop(cs) && fv_getBot(ct) >= fv_getBot(cs);
+            `endif
+            let perms = fv_getPerms(ct) & ~fv_getPerms(cs);
+            return (boundscheck && (perms == 0));
         end
         else begin
             alu_outputs.control = CONTROL_TRAP;
@@ -1630,7 +1659,7 @@ function Tuple3#(Bit#(6), Bit#(20), Bool) fv_deriveBounds(Bit#(64) base, Bit#(64
     Bit#(6) rangeExp = pack(63 - countZerosMSB(range))[5:0];
     Bit#(64) top = base + range;
     // If we have an non-power-of-two range (range inexact) or we'll get one when we round the base down.
-    if ((countOnes(range) > 1) || ((top & ~(64'hffff_ffff_ffff_ffff << rangeExp)) != 0)) begin
+    if ((countOnes(range) > 1) || ((base & ~(64'hffff_ffff_ffff_ffff << rangeExp)) != 0)) begin
         rangeExp = fv_updateExp_increase(base,top,rangeExp);
         exact = False;
     end

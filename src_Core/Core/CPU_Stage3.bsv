@@ -125,15 +125,13 @@ module mkCPU_Stage3 #(Bit #(4)         verbosity,
 	       $display ("    S3.fa_deq: write Rd 0x%0h, rd_val 0x%0h",
 			 rg_stage3.rd, rg_stage3.rd_val);
 	 end
+     else if (instr_is_clear(rg_stage3.instr)) //val1[9:8] = quadrant, val1[7:0] = mask
+         gpr_regfile.clear_quarter(rg_stage3.rd_val[9:8],rg_stage3.rd_val[7:0]);
 
 	 // Writeback CSR if valid
 	 Bool wrote_csr_minstret = False;
 	 if (rg_stage3.csr_valid) begin
-	    // TODO: remove: has been moved to Stage1: csr_regfile.write_csr (rg_stage3.csr, rg_stage3.csr_val);
 	    wrote_csr_minstret = ((rg_stage3.csr == csr_minstret) || (rg_stage3.csr == csr_minstreth));
-	    if (verbosity > 1)
-	       $display ("    S3.fa_deq: write CSR 0x%0h, val 0x%0h",
-			 rg_stage3.csr, rg_stage3.csr_val);
 	 end
 
 	 // Increment csr_INSTRET if it was not explicity updated by a CSRRx instruction

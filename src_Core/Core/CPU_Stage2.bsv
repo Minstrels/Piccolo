@@ -221,12 +221,10 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 					            };
       end
-      // This stage is just relaying ALU results from previous stage to next stage
+
 `ifdef CHERI
       else if (rg_stage2.op_stage2 == OP_Stage2_CLR) begin
-      
 	    let data_to_stage3 = data_to_stage3_base;
-	    // TODO: Is this correct? It's not done elsewhere, but why?
 	    data_to_stage3.rd_valid = False; 
 	    data_to_stage3.rd       = 0;
 	    
@@ -242,6 +240,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 					};
       end
 `endif
+      // This stage is just relaying ALU results from previous stage to next stage
       else if (rg_stage2.op_stage2 == OP_Stage2_ALU) begin
 	    let data_to_stage3 = data_to_stage3_base;
 	    data_to_stage3.rd_valid = True;
