@@ -405,7 +405,7 @@ cheriV:
 
 .PHONY: simpleR
 simpleR:
-	@echo "INFO: Compiling CHERI RVFI for simulation"
+	@echo "INFO: Compiling SimpleRange RVFI for simulation"
 	mkdir -p simpleR
 	bsc -u -elab -sim -D SIM $(USEFUL_FLAGS) $(TMP_SIMPLER) $(BSC_SIMPLER) $(BSC_PATH) $(TOPFILE)
 	@echo "INFO: Compilation completed, starting linking"
@@ -415,12 +415,12 @@ simpleR:
 		$(BSC_C_FLAGS)\
 		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c \
 		$(REPO)/src_Verifier/BSV-RVFI-DII/SocketPacketUtils/socket_packet_utils.c
-	@echo "INFO: linked CHERI objects into Bluesim executable"
+	@echo "INFO: linked SimpleRange objects into Bluesim executable"
 
 
 .PHONY: simpleV
 simpleV:
-	@echo "INFO: Compiling CHERI..."
+	@echo "INFO: Compiling SimpleRange..."
 	mkdir -p simpleV
 	bsc -u -elab -verilog $(USEFUL_FLAGS) $(TMP_SIMPLEV) $(BSC_SIMPLEV) $(BSC_PATH) ../src_Core/Core/CPU.bsv
 	@echo "INFO: Compilation completed"
