@@ -1053,6 +1053,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             end
             alu_outputs.val1 = from129Bit(packCap(out));
 `endif
+        end
     end
     else if (inputs.decoded_instr.funct3 == 3'b000) begin // Other instructions
         if (inputs.decoded_instr.funct7 == f7_CAPINSPECT) begin // 0x7f
@@ -1330,12 +1331,12 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         else if (inputs.decoded_instr.funct7 == f7_SUBSET) begin
             // Checking ct within cs
             `ifdef SIMPLERANGE
-            let boundscheck = fv_check_bounds(fv_getB(ct), fv_getExp(ct), fv_simple_lower(cs), fv_simple_top(cs));
+            let boundscheck = fv_checkBounds(fv_getB(ct), fv_getExp(ct), fv_simple_lower(cs), fv_simple_top(cs));
             `else
-            let boundscheck = fv_getTop(ct) <= fv_getTop(cs) && fv_getBot(ct) >= fv_getBot(cs);
+            let boundscheck = fv_getTop(ct) <= fv_getTop(cs) && fv_getBase(ct) >= fv_getBase(cs);
             `endif
             let perms = fv_getPerms(ct) & ~fv_getPerms(cs);
-            return (boundscheck && (perms == 0));
+            alu_outputs.val1 =  change_tagged_addr(tc_zero, ((boundscheck && (perms == 0)) ? 64'b1 : 64'b0));
         end
         else begin
             alu_outputs.control = CONTROL_TRAP;
