@@ -1327,7 +1327,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         else if (inputs.decoded_instr.funct7 == f7_SUBSET) begin
             // Checking ct within cs
             `ifdef SIMPLERANGE
-            let boundscheck = fv_checkBounds2(fv_getB(ct), fv_getExp(ct), fv_getB(cs), fv_getExp(cs));
+            let boundscheck = fv_checkBounds(fv_getB(ct), fv_getExp(ct), fv_getB(cs), fv_getExp(cs));
             `else
             let boundscheck = fv_getTop(ct) <= fv_getTop(cs) && fv_getBase(ct) >= fv_getBase(cs);
             `endif
@@ -1602,7 +1602,7 @@ function Tuple3#(Exc_Code, Bool, Tagged_Capability) fv_setBounds_simple(Tagged_C
             .bot,
             .b_exact
         } = fv_deriveBounds(tagged_addr(old), rt);
-        if (!fv_checkBounds2(bot, exp, fv_getB(old), fv_getExp(old)))
+        if (!fv_checkBounds(bot, exp, fv_getB(old), fv_getExp(old)))
             trap = exc_code_BOUNDS_INVALID;
         exact = b_exact;
         ret = fv_assemble_new_bounds(old,bot,exp);
@@ -1621,7 +1621,6 @@ function Tuple3#(Bit#(6), Bit#(20), Bool) fv_deriveBounds(Bit#(64) base, Bit#(64
     let exact = True;
     Bit#(6) chosenExp = pack(63 - countZerosMSB(range))[5:0];
     Bit#(64) top = base + range;
-    // If we have an non-power-of-two range (range inexact) or we'll get one when we round the base down.
     if ((countOnes(range) > 1) || ((base & ~(64'hffff_ffff_ffff_ffff << chosenExp)) != 0)) begin
         chosenExp = fv_updateExp_increase(base,top,chosenExp);
         exact = False;
@@ -1649,7 +1648,7 @@ function Tagged_Capability fv_assemble_new_bounds(Tagged_Capability old, Bit#(20
     };
 endfunction
 
-function Bool fv_checkBounds2(Bit#(20) newB, Bit#(6) newExp, Bit#(20) oldB, Bit#(6) oldExp);
+function Bool fv_checkBounds(Bit#(20) newB, Bit#(6) newExp, Bit#(20) oldB, Bit#(6) oldExp);
     // If exponents the same, OldB=NewB gives bounds the same (valid)
     let out = True;
     if (newExp > oldExp) // Wider bounds => reject
@@ -1658,16 +1657,13 @@ function Bool fv_checkBounds2(Bit#(20) newB, Bit#(6) newExp, Bit#(20) oldB, Bit#
         out = (newB == oldB);
     else begin
         let diff = oldExp - newExp;
-        if (diff >= 20)
-            out = (oldB == 20'b0);
-        else begin
-            out = ({1'b0, oldB} == {1'b0, newB} >> diff);
-        end
+        out = ({1'b0, oldB} == ({1'b0, newB} >> diff));
     end
     return out;
 endfunction
 
 `endif
+
 
 function Bool fv_checkRange_withLen (Tagged_Capability rs1, Bit#(4) bytes);
 `ifdef SIMPLERANGE
@@ -1675,7 +1671,7 @@ function Bool fv_checkRange_withLen (Tagged_Capability rs1, Bit#(4) bytes);
     Addr lower = tagged_addr(rs1);
     Addr upper = lower + zeroExtend(bytes) - 1;
     Bit#(20) b = fv_getB(rs1);
-    return (({1'b0, lower} >> exp)[19:0] == b) && (({1'b0, upper} >> exp)[19:0] == b);
+    return ((lower >> exp)[19:0] == b) && ((upper >> exp)[19:0] == b);
 `else
     Bit #(64) base   = fv_getBase(rs1)[63:0];
     Bit #(64) top    = fv_getTop (rs1)[63:0];
@@ -1717,10 +1713,7 @@ function Exc_Code fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt)
     else if (!fv_checkRange_withLen(rt, 4'h01))           // Bounds violation
         out = exc_code_BOUNDS_VIOLATED;
 `ifdef SIMPLERANGE
-    // SIMPLERANGE simply uses the TOP field as a permanent Otype field. We have a lower number of bits available, but
-    // 2^20 should really be enough. With more consideration we could use some of the reserved bits, use a "0 = unsealed"
-    // semantic or suchlike, but this would require a huge pile of adjustment which isn't particularly worthwhile in this
-    // proof-of-concept
+    // SIMPLERANGE simply uses the TOP field as a permanent Otype field.
     else if (cap_addr(rt.capability) > 64'h0000_0000_000f_ffff)
         out = exc_code_MAX_OTYPE;
 `else
