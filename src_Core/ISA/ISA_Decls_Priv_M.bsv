@@ -759,6 +759,8 @@ Exc_Code  exc_code_OBJECT_TYPE_INVALID    = 24;
 Exc_Code  exc_code_CRETURN                = 25;
 // Code for a 0-code CCALL instruction
 Exc_Code  exc_code_CCALL                  = 26;
+// Maximum Otype exceeded
+Exc_Code  exc_code_MAX_OTYPE              = 27;
 
 // Leaves codes 27-31 available.
 

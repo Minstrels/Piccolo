@@ -1038,12 +1038,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 .exact,
                 .out
             } = fv_setBounds_simple(cs,range);
+            alu_outputs.val1 = out;
             if (trap != exc_code_NO_EXCEPTION) begin
                 alu_outputs.control = CONTROL_TRAP;
                 alu_outputs.exc_code = trap;
-            end
-            else begin
-                alu_outputs.val1 = out;
             end
 `else
             CapFat out = setBounds(unpackCap(to129Bit(cs)), range, False);
@@ -1142,6 +1140,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                     .exact,
                     .out
                 } = fv_setBounds_simple(cs,range);
+                alu_outputs.val1 = out;
                 if (trap != exc_code_NO_EXCEPTION) begin
                     alu_outputs.control = CONTROL_TRAP;
                     alu_outputs.exc_code = trap;
@@ -1149,9 +1148,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 else if (inputs.decoded_instr.funct7 == f7_CSBOUNDSEX && !exact) begin
                     alu_outputs.control = CONTROL_TRAP;
                     alu_outputs.exc_code = exc_code_BOUNDS_INEXACT;
-                end
-                else begin
-                    alu_outputs.val1 = out;
                 end
 `else
                 CapFat out = setBounds(unpackCap(to129Bit(cs)), range, (inputs.decoded_instr.funct7 == f7_CSBOUNDSEX));
@@ -1331,7 +1327,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         else if (inputs.decoded_instr.funct7 == f7_SUBSET) begin
             // Checking ct within cs
             `ifdef SIMPLERANGE
-            let boundscheck = fv_checkBounds(fv_getB(ct), fv_getExp(ct), fv_simple_lower(cs), fv_simple_top(cs));
+            let boundscheck = fv_checkBounds2(fv_getB(ct), fv_getExp(ct), fv_getB(cs), fv_getExp(cs));
             `else
             let boundscheck = fv_getTop(ct) <= fv_getTop(cs) && fv_getBase(ct) >= fv_getBase(cs);
             `endif
@@ -1445,7 +1441,7 @@ function Exc_Code fv_checkMemoryTarget(Tagged_Capability tc, Bit#(5) spec);
         out = exc_code_CAPABILITY_SEALED;
     else if ((spec[3:2] == 2'b11)) // Illegal spec
         out = exc_code_ILLEGAL_INSTRUCTION;
-    else if ((fv_isLoad(spec) && cpv[117] == 1'b0) || (fv_isLoad(spec) && cpv[116] == 1'b0)) // Store permission
+    else if ((fv_isLoad(spec) && cpv[117] == 1'b0) || (fv_isStore(spec) && cpv[116] == 1'b0)) // Store permission
         out = exc_code_PERMISSION_DENIED;
     else if (
         ((spec[1:0] == 2'b00) && fv_checkRange_withLen(tc,4'h1)) || // Bounds
@@ -1529,6 +1525,9 @@ function Bit #(65) fv_topCorrection (Bit #(64) a, Bit #(20) b, Bit #(20) t, Bit 
 endfunction
 
 function Bit #(65) fv_getBase (Tagged_Capability tc);
+`ifdef SIMPLERANGE
+    return zeroExtend(fv_getB(tc) << fv_getExp(tc));
+`else
     // As defined in 3.3.8/page 81.
     Bit #(6)  e = fv_getExp(tc);
     Bit #(20) b = fv_getB(tc);
@@ -1536,14 +1535,12 @@ function Bit #(65) fv_getBase (Tagged_Capability tc);
     Bit #(65) b_val = zeroExtend(b << e);
     result = result + b_val;
     return result;
+`endif
 endfunction
 
 function Bit #(65) fv_getTop  (Tagged_Capability tc);
 `ifdef SIMPLERANGE
-    Bit #(20) b = fv_getB(tc);
-    Bit #(6)  e = fv_getExp(tc);
-    Bit #(65) out = (extend(b+1) << e);
-    return out;
+    return (extend(fv_getB(tc)+1) << fv_getExp(tc));
 `else
     // As defined in 3.3.8/page 81.
     Bit #(6)  e = fv_getExp(tc);
@@ -1590,26 +1587,8 @@ endfunction
 
 `ifdef SIMPLERANGE
 
-function Addr fv_simple_lower(Tagged_Capability tc);
-    let exp = fv_getExp(tc);
-    return zeroExtend(fv_getB(tc) << exp);
-endfunction
-
-function Addr fv_simple_top(Tagged_Capability tc);
-    let exp = fv_getExp(tc);
-    return zeroExtend((fv_getB(tc) + 1) << exp);
-endfunction
-
-function Bool fv_simpleRange_withLen(Tagged_Capability tc, Bit#(4) bytes);
-	Bit #(6) exp  = fv_getExp(tc);
-    Addr lower = tc.capability[63:0];
-    Addr upper = lower + zeroExtend(bytes) - 1;
-    Bit#(64) b = zeroExtend(fv_getB(tc));
-    return (lower >> exp == b) && (upper >> exp == b);
-endfunction
-
 function Bool fv_checkRange_simplified (Tagged_Capability rs1);
-    return ((rs1.capability[63:0] >> fv_getExp(rs1)) == zeroExtend(fv_getB(rs1)));
+    return ((rs1.capability[63:0] >> fv_getExp(rs1))[19:0] == fv_getB(rs1));
 endfunction
 
 function Tuple3#(Exc_Code, Bool, Tagged_Capability) fv_setBounds_simple(Tagged_Capability old, Addr rt);
@@ -1628,8 +1607,8 @@ function Tuple3#(Exc_Code, Bool, Tagged_Capability) fv_setBounds_simple(Tagged_C
         // Simplification - exact requires that rt is a power of 2.
         let requested_lower = tagged_addr(old);
         let requested_top = requested_lower + rt;
-        let old_lower = fv_simple_lower(old);
-        let old_top = fv_simple_top(old);
+        let old_lower = fv_getBase(old);
+        let old_top = fv_getTop(old);
         if (requested_lower < old_lower || requested_top > old_top || requested_top <= requested_lower)
             trap = exc_code_BOUNDS_INVALID;
         else begin
@@ -1638,7 +1617,7 @@ function Tuple3#(Exc_Code, Bool, Tagged_Capability) fv_setBounds_simple(Tagged_C
                 .bot,
                 .bounds_exact
             } = fv_deriveBounds(requested_lower, rt);
-            if (!fv_checkBounds(bot, exp, old_lower, old_top)) begin
+            if (!fv_checkBounds2(bot, exp, fv_getB(old), fv_getExp(old)))begin
                 trap = exc_code_BOUNDS_INVALID;
             end
             ret = fv_assemble_new_bounds(old,bot,exp);
@@ -1656,7 +1635,6 @@ endfunction
 
 function Tuple3#(Bit#(6), Bit#(20), Bool) fv_deriveBounds(Bit#(64) base, Bit#(64) range);
     let exact = True;
-    Bit#(6) chosenExp = 0;
     Bit#(6) rangeExp = pack(63 - countZerosMSB(range))[5:0];
     Bit#(64) top = base + range;
     // If we have an non-power-of-two range (range inexact) or we'll get one when we round the base down.
@@ -1664,7 +1642,7 @@ function Tuple3#(Bit#(6), Bit#(20), Bool) fv_deriveBounds(Bit#(64) base, Bit#(64
         rangeExp = fv_updateExp_increase(base,top,rangeExp);
         exact = False;
     end
-    chosenExp = rangeExp;
+    Bit#(6) chosenExp = rangeExp;
     Bit#(6) baseExp = fv_getBExp(pack(countZerosMSB(base)));
     if (baseExp > rangeExp) begin // Need a larger exponent to represent base (range inexact)
         exact = False;
@@ -1689,9 +1667,28 @@ function Tagged_Capability fv_assemble_new_bounds(Tagged_Capability old, Bit#(20
 endfunction
 
 function Bool fv_checkBounds(Bit#(20) newB, Bit#(6) newExp, Addr old_low, Addr old_top);
-    Bit#(64) top = zeroExtend((newB + 1) << newExp);
-    Bit#(64) bot = zeroExtend(newB << newExp);
-    return (top <= old_top && bot >= old_low);
+    let base_correct = (old_low >> newExp <= newB);
+    let top_correct  = (old_top >> newExp >= newB + 1);
+    return base_correct && top_correct;
+    //return (zeroExtend((newB + 1) << newExp) <= old_top && zeroExtend(newB << newExp) >= old_low);
+endfunction
+
+function Bool fv_checkBounds2(Bit#(20) newB, Bit#(6) newExp, Bit#(20) oldB, Bit#(6) oldExp);
+    // If exponents the same, OldB=NewB gives bounds the same (valid)
+    let out = True;
+    if (newExp > oldExp) // Wider bounds => reject
+        out = False;
+    else if (newExp == oldExp) // Same exponent, must be the same bounds or reject
+        out = (newB == oldB);
+    else begin
+        let diff = oldExp - newExp;
+        if (diff >= 20)
+            out = (oldB == 20'b0);
+        else begin
+            out = (oldB == zeroExtend(newB >> diff));
+        end
+    end
+    return out;
 endfunction
 
 `endif
@@ -1699,7 +1696,11 @@ endfunction
 
 function Bool fv_checkRange_withLen (Tagged_Capability rs1, Bit#(4) bytes);
 `ifdef SIMPLERANGE
-    return fv_simpleRange_withLen(rs1,bytes);
+    Bit #(6) exp  = fv_getExp(tc);
+    Addr lower = tc.capability[63:0];
+    Addr upper = lower + zeroExtend(bytes) - 1;
+    Bit#(20) b = fv_getB(tc);
+    return ((lower >> exp)[19:0] == b) && ((upper >> exp)[19:0] == b);
 `else
     Bit #(64) base   = fv_getBase(rs1)[63:0];
     Bit #(64) top    = fv_getTop (rs1)[63:0];
@@ -1719,6 +1720,7 @@ function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
     return (base || user || supr || mach);
 endfunction
 
+/*
 function Bit#(24) fv_getOType(Tagged_Capability rs1);
     let rs1_cap = rs1.capability;
     `ifdef SIMPLERANGE
@@ -1726,7 +1728,19 @@ function Bit#(24) fv_getOType(Tagged_Capability rs1);
     `else
     return {rs1_cap[95:84], rs1_cap[75:64]};
     `endif
+endfunction*/
+
+`ifdef SIMPLERANGE
+function Bit#(20) fv_getOType(Tagged_Capability rs1);
+    let rs1_cap = rs1.capability;
+    return zeroExtend(rs1_cap[83:64]);
 endfunction
+`else
+function Bit#(24) fv_getOType(Tagged_Capability rs1);
+    let rs1_cap = rs1.capability;
+    return {rs1_cap[95:84], rs1_cap[75:64]};
+endfunction
+`endif
 
 function Exc_Code fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt);
     let out = exc_code_NO_EXCEPTION;
@@ -1744,10 +1758,10 @@ function Exc_Code fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt)
     // semantic or suchlike, but this would require a huge pile of adjustment which isn't particularly worthwhile in this
     // proof-of-concept
     else if (cap_addr(rt.capability) > 64'h0000_0000_000f_ffff)
-        out = exc_code_BOUNDS_VIOLATED;
+        out = exc_code_MAX_OTYPE;
 `else
     else if (cap_addr(rt.capability) > 64'h0000_0000_00ff_ffff)      // Max_OType violation
-        out = exc_code_BOUNDS_VIOLATED;
+        out = exc_code_MAX_OTYPE;
     else if ((rs.capability[95:84] != 0) || (rs.capability[75:64] != 0)) // Bounds representation violation
         out = exc_code_BOUNDS_INVALID;
 `endif
