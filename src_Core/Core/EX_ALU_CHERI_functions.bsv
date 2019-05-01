@@ -1589,25 +1589,19 @@ endfunction
 
 function Tuple3#(Exc_Code, Bool, Tagged_Capability) fv_setBounds_simple(Tagged_Capability old, Addr rt);
     let trap = exc_code_NO_EXCEPTION;
-    let exact = True;
-    let ret = tc_zero;
     if (old.tag == 1'b0)
         trap = exc_code_TAG_NOT_SET;
     else if (fv_checkSealed(old))
         trap = exc_code_CAPABILITY_SEALED;
-    else begin
-        // Derive and check bounds
-        match  {
+    match  {
             .exp,
             .bot,
             .b_exact
         } = fv_deriveBounds(tagged_addr(old), rt);
-        if (!fv_checkBounds(bot, exp, fv_getB(old), fv_getExp(old)))
-            trap = exc_code_BOUNDS_INVALID;
-        exact = b_exact;
-        ret = fv_assemble_new_bounds(old,bot,exp);
-    end
-    return tuple3(trap, exact, ret);
+    if (!fv_checkBounds(bot, exp, fv_getB(old), fv_getExp(old)))
+        trap = exc_code_BOUNDS_INVALID;
+    let ret = fv_assemble_new_bounds(old,bot,exp);
+    return tuple3(trap, b_exact, ret);
 endfunction
 
 function Bit#(6) fv_getBExp(Bit#(7) leading);
