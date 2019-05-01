@@ -1575,11 +1575,11 @@ function Exc_Code fv_checkValid_Execute (Tagged_Capability rs1);
     Bool      sealed = fv_checkSealed(rs1);
     if (rs1.tag == 1'b0) // Tag violation
         out = exc_code_TAG_NOT_SET;
-    if (sealed) // Seal violation
+    else if (sealed) // Seal violation
         out = exc_code_CAPABILITY_SEALED;
-    if (perms[1] == 1'b0) // Permit_Execute violation
+    else if (perms[1] == 1'b0) // Permit_Execute violation
         out = exc_code_PERMISSION_DENIED;
-    if (!fv_checkRange_withLen(rs1, 4'h04)) // Bounds violation - 4-byte value
+    else if (!fv_checkRange_withLen(rs1, 4'h04)) // Bounds violation - 4-byte value
         out = exc_code_BOUNDS_VIOLATED;
     return out;
 endfunction
@@ -1589,19 +1589,18 @@ endfunction
 
 function Tuple3#(Exc_Code, Bool, Tagged_Capability) fv_setBounds_simple(Tagged_Capability old, Addr rt);
     let trap = exc_code_NO_EXCEPTION;
-    if (old.tag == 1'b0)
-        trap = exc_code_TAG_NOT_SET;
-    else if (fv_checkSealed(old))
-        trap = exc_code_CAPABILITY_SEALED;
     match  {
             .exp,
             .bot,
             .b_exact
         } = fv_deriveBounds(tagged_addr(old), rt);
-    if (!fv_checkBounds(bot, exp, fv_getB(old), fv_getExp(old)))
+    if (old.tag == 1'b0)
+        trap = exc_code_TAG_NOT_SET;
+    else if (fv_checkSealed(old))
+        trap = exc_code_CAPABILITY_SEALED;
+    else if (!fv_checkBounds(bot, exp, fv_getB(old), fv_getExp(old)))
         trap = exc_code_BOUNDS_INVALID;
-    let ret = fv_assemble_new_bounds(old,bot,exp);
-    return tuple3(trap, b_exact, ret);
+    return tuple3(trap, b_exact, fv_assemble_new_bounds(old,bot,exp));
 endfunction
 
 function Bit#(6) fv_getBExp(Bit#(7) leading);
@@ -1614,18 +1613,17 @@ endfunction
 function Tuple3#(Bit#(6), Bit#(20), Bool) fv_deriveBounds(Bit#(64) base, Bit#(64) range);
     let exact = True;
     Bit#(6) chosenExp = pack(63 - countZerosMSB(range))[5:0];
+    Bit#(6) baseExp = fv_getBExp(pack(countZerosMSB(base)));
     Bit#(64) top = base + range;
     if ((countOnes(range) > 1) || ((base & ~(64'hffff_ffff_ffff_ffff << chosenExp)) != 0)) begin
         chosenExp = fv_updateExp_increase(base,top,chosenExp);
         exact = False;
     end
-    Bit#(6) baseExp = fv_getBExp(pack(countZerosMSB(base)));
     if (baseExp > chosenExp) begin
         exact = False;
         chosenExp = baseExp;
     end
-    let b = (base >> chosenExp)[19:0];
-    return tuple3(chosenExp, b, exact);
+    return tuple3(chosenExp, (base >> chosenExp)[19:0], exact);
 endfunction
 
 function Bit#(6) fv_updateExp_increase(Bit#(64) base, Bit#(64) top, Bit#(6) lastExp);
@@ -1643,17 +1641,8 @@ function Tagged_Capability fv_assemble_new_bounds(Tagged_Capability old, Bit#(20
 endfunction
 
 function Bool fv_checkBounds(Bit#(20) newB, Bit#(6) newExp, Bit#(20) oldB, Bit#(6) oldExp);
-    // If exponents the same, OldB=NewB gives bounds the same (valid)
-    let out = True;
-    if (newExp > oldExp) // Wider bounds => reject
-        out = False;
-    else if (newExp == oldExp) // Same exponent, must be the same bounds or reject
-        out = (newB == oldB);
-    else begin
-        let diff = oldExp - newExp;
-        out = ({1'b0, oldB} == ({1'b0, newB} >> diff));
-    end
-    return out;
+    let diff = oldExp - newExp;
+    return ((newExp == oldExp && newB == oldB) || (newExp < oldExp && ({1'b0, oldB} == ({1'b0, newB} >> diff))));
 endfunction
 
 `endif
