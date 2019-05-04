@@ -151,9 +151,6 @@ Tagged_Capability tc_zero =
            capability:  0
         };
 
-// NULL capability
-// TODO: top correct?
-
 Tagged_Capability tc_null =
         Tagged_Capability {
             tag: 1'b0,
@@ -953,11 +950,7 @@ endfunction
 // User-level CSR addresses
 
 `ifdef CHERI
-
-    // TODO: Confirm encoding of new capabilities
-    // TODO: Scratch registers aren't given in CHERI spec as extending the base CSRs, so are they separate?
     
-    //
     CapCSR_Addr ccsr_ddc        = 5'd01;
     
     CapCSR_Addr ccsr_utcc       = 5'd04;

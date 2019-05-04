@@ -692,6 +692,7 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
    if (legal_LD && ddc_check != exc_code_NO_EXCEPTION) // Illegal instruction takes priority.
       alu_outputs.exc_code = ddc_check;
    alu_outputs.control   = ((!legal_LD || (ddc_check != exc_code_NO_EXCEPTION)) ? CONTROL_TRAP : CONTROL_STRAIGHT);*/
+   alu_outputs.control = (legal_LD) ? CONTROL_STRAIGHT : CONTROL_TRAP;
    alu_outputs.op_stage2 = OP_Stage2_LD;
    alu_outputs.rd        = inputs.decoded_instr.rd;
    alu_outputs.addr      = change_tagged_addr(tc_zero, eaddr);
@@ -1013,8 +1014,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let   ct = inputs.rs2_val;
     alu_outputs.op_stage2 = OP_Stage2_ALU;
     if (inputs.decoded_instr.funct3 == 3'b001) begin // CIncOffsetImmediate
-        // TODO: If we don't have the 256-bit capability format we don't need to worry about representing the bounds as
-        // they must be represented in the capability we're incrementing. Do we need to check overflow on the pointer?
         if (cs.tag == 1'b1 && fv_checkSealed(cs)) begin
             alu_outputs.control = CONTROL_TRAP;
             alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
@@ -1076,8 +1075,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             end
         end
         else if (inputs.decoded_instr.funct7 == f7_ANDPERM) begin // 0x0d
-            // TODO: Where do we get the permission bits from? Still using the same perms/uperms
-            // split as in CHERI-MIPS, or just the 15-bit muperms field in the 128-bit version?
             if (cs.tag == 1'b0) begin
                 alu_outputs.exc_code = exc_code_TAG_NOT_SET;
                 alu_outputs.control  = CONTROL_TRAP;
@@ -1180,7 +1177,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 tag = 1'b0;
             else if (!bounds_valid)
                 tag = 1'b0;
-            // TODO: What do we do if the conditions AREN'T met?
             alu_outputs.val1 = Tagged_Capability {
                     tag:        tag,
                     capability: {ct_perms, 2'b0, ct_exp, 1'b0, ct_B, ct_T, ct_cursor}
@@ -1241,7 +1237,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             else begin
                 let cs_base = fv_getBase(inputs.rs2_val)[63:0];
                 let cb_addr = tagged_addr(inputs.rs1_val);
-                // TODO: Any handling of negative values?
                 alu_outputs.val1 = change_tagged_addr(tc_zero, cb_addr - cs_base);
             end
         end
@@ -1675,6 +1670,7 @@ function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
 endfunction
 
 `ifdef SIMPLERANGE
+// SIMPLERANGE simply uses the TOP field as a permanent Otype field.
 function Bit#(20) fv_getOType(Tagged_Capability rs1);
     return rs1.capability[83:64];
 endfunction
@@ -1696,7 +1692,7 @@ function Exc_Code fv_checkValid_Seal(Tagged_Capability rs, Tagged_Capability rt)
     else if (!fv_checkRange_withLen(rt, 4'h01))           // Bounds violation
         out = exc_code_BOUNDS_VIOLATED;
 `ifdef SIMPLERANGE
-    // SIMPLERANGE simply uses the TOP field as a permanent Otype field.
+    // In SimpleRange, only 20 bits are used for OType.
     else if (cap_addr(rt.capability) > 64'h0000_0000_000f_ffff)
         out = exc_code_MAX_OTYPE;
 `else
@@ -1744,12 +1740,17 @@ function Exc_Code fv_checkValid_Unseal(Tagged_Capability rs, Tagged_Capability r
     let out = exc_code_NO_EXCEPTION;
     if (rs.tag == 0 || rt.tag == 0)                     // Tag violation
         out = exc_code_TAG_NOT_SET;
-    else if (!fv_checkSealed(rs))                       // Sealed violation
+    else if (!fv_checkSealed(rs))                       // Sealed violations
         out = exc_code_CAPABILITY_NOT_SEALED;
     else if (fv_checkSealed(rt))
         out = exc_code_CAPABILITY_SEALED;
+    `ifdef SIMPLERANGE
+    else if (rsc[83:64] != rtc[19:0])                   // OType violation
+        out = exc_code_OBJECT_TYPE_INVALID;    
+    `else
     else if ({rsc[95:84], rsc[75:64]} != rtc[23:0])          // OType violation
         out = exc_code_OBJECT_TYPE_INVALID;
+    `endif
     else if (rtc[122] == 0)                                  // Permit_Unseal violation
         out = exc_code_PERMISSION_DENIED;
     return out;
