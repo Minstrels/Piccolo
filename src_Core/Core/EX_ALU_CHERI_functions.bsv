@@ -1018,7 +1018,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             alu_outputs.control = CONTROL_TRAP;
             alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
         end
-        alu_outputs.val1 = increment_tagged_addr(cs, signExtend(inputs.decoded_instr.imm12_I));
+        else begin
+            alu_outputs.val1 = increment_tagged_addr(cs, signExtend(inputs.decoded_instr.imm12_I));
+        end
     end
     else if (inputs.decoded_instr.funct3 == 3'b010) begin // CSetBoundsImmediate
         if (cs.tag == 1'b0) begin
@@ -1188,7 +1190,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         
         else if (inputs.decoded_instr.funct7 == f7_CCOPYTYPE) begin // 0x1e
             if (cs.tag == 0) begin
-                alu_outputs.control = CONTROL_TRAP;
+                alu_outputs.control  = CONTROL_TRAP;
                 alu_outputs.exc_code = exc_code_TAG_NOT_SET;
             end
             else if (fv_checkSealed(cs)) begin
@@ -1196,7 +1198,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.exc_code = exc_code_CAPABILITY_SEALED;
             end
             else if (!fv_checkSealed(ct))begin
-                alu_outputs.val1 = change_tagged_addr(tc_zero, -1);
+                //alu_outputs.val1 = change_tagged_addr(tc_zero, -1);
+                alu_outputs.val1 = change_tagged_addr(tc_zero, 0);
             end
             else begin
                 let out_val = change_tagged_addr(cs, extend(fv_getOType(ct)));
@@ -1270,10 +1273,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.val2 = inputs.rs1_val;
             end
         end
-        // This is an absolutely awful design. Why put a source register in the field that is the destination
-        // for every other instruction, when the selector field (unique to this instruction) could be put there
-        // instead, thereby preventing the need for an unnecessary special case to get the right registers for
-        // this specific instruction?
         else if (inputs.decoded_instr.funct7 == f7_CCALLRET) begin // 0x7e
             let selector = instr_rs2 (inputs.instr);
             let cb2 = inputs.rs1_val;
@@ -1556,6 +1555,9 @@ function Bit #(64) fv_getLen(Tagged_Capability tc);
 `ifdef SIMPLERANGE
     return (64'b1 << fv_getExp(tc));
 `else
+    //CapFat fat = unpackCap({tc.tag, tc.capability});
+    //Bit #(66) len = getLengthFat(fat,getTempFields(fat));
+    //return len[65:64] == 2'b00 ? len[63:0] : 64'hffff_ffff_ffff_ffff;
     return (zeroExtend(fv_getT(tc) - fv_getB(tc)) << fv_getExp(tc));
 `endif
 endfunction
