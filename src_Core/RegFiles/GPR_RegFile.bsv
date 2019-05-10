@@ -143,7 +143,7 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
             rg_state <= RF_RUNNING;
 `elsif RVFI
     `ifdef CHERI
-        regfile.upd (rg_j, tc_null);
+        regfile.upd (rg_j, tc_initial);
         rg_j <= rg_j + 1;
         if (rg_j == 31)
             rg_state <= RF_RUNNING;
