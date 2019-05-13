@@ -169,16 +169,24 @@ Tagged_Capability tc_pcc_vals =
 		    }
 		};
 		
-/*Tagged_Capability tc_initial = 
-        Tagged_Capability {
-            tag: 1'b0,
-            capability: {15'h0000, 2'b00, 6'b111111, 1'b0, 
-                            20'h00000, 20'h11111,
-                            64'h0000_0000_0000_0000
+Tagged_Capability tc_initial = 
+        Tagged_Capability { 
+            tag: 1'b1,
+            capability: {15'h7fff, 2'b00, 6'b111111, 1'b1, 
+                            20'h00123, 20'hff456,
+                            64'h0000_0000_0012_3456
                             }
-        };*/
+        };
+Tagged_Capability tc_initial2 = 
+        Tagged_Capability { 
+            tag: 1'b1,
+            capability: {15'h7fff, 2'b00, 6'b111111, 1'b0, 
+                            20'h00000, 20'hff000,
+                            64'h0000_0000_0012_3456
+                            }
+        };
         
-Tagged_Capability tc_initial = from129Bit(packCap(defaultValue));
+//Tagged_Capability tc_initial = from129Bit(packCap(defaultValue));
 
 Capability cap_null = fv_assemble_cap(
     Capability_Struct {
@@ -467,7 +475,7 @@ function Decoded_Instr fv_decode (Instr instr);
 			 rd:        instr_rd       (instr),
 			 rs1:       instr_rs1      (instr),
 `ifdef CHERI
-			 rs2:       ((opc == op_CAP && f7 == f7_CCALLRET) ? instr_rd(instr) : instr_rs2 (instr)),
+			 rs2:       ((opc == op_CAP && (f7 == f7_CCALLRET || f7 == f7_MEMORYOP)) ? instr_rd(instr) : instr_rs2 (instr)),
 `else
              rs2:       instr_rs2 (instr),
 `endif
