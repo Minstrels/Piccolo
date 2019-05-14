@@ -1021,10 +1021,12 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         else begin
             let newCursor = cs.capability[63:0] + signExtend(inputs.decoded_instr.imm12_I);
             `ifndef SIMPLERANGE
-            if !fv_checkValid_SetCursor(cs,newCursor) begin
+            if (!fv_checkValid_SetCursor(cs,newCursor)) begin
                 alu_outputs.control  = CONTROL_TRAP;
                 alu_outputs.exc_code = exc_code_OFFSET_REPRESENTATION;
+            end
             else
+            `endif
                 alu_outputs.val1 = Tagged_Capability {
                         tag: inputs.rs1_val.tag,
                         capability: {cs.capability[127:64], newCursor}
@@ -1114,9 +1116,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             else begin
                 Bit #(64) newCursor = ct.capability[63:0] + fv_getBase(cs)[63:0];
                 `ifndef SIMPLERANGE
-                if !fv_checkValid_SetCursor(cs,newCursor) begin
+                if (!fv_checkValid_SetCursor(cs,newCursor)) begin
                     alu_outputs.control  = CONTROL_TRAP;
                     alu_outputs.exc_code = exc_code_OFFSET_REPRESENTATION;
+                end
                 else
                 `endif
                     alu_outputs.val1 = Tagged_Capability {
@@ -1134,9 +1137,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
             else begin
                 Bit #(64) newCursor = cs.capability[63:0] + ct.capability[63:0];
                 `ifndef SIMPLERANGE
-                if !fv_checkValid_SetCursor(cs,newCursor) begin
+                if (!fv_checkValid_SetCursor(cs,newCursor)) begin
                     alu_outputs.control  = CONTROL_TRAP;
                     alu_outputs.exc_code = exc_code_OFFSET_REPRESENTATION;
+                end
                 else
                 `endif
                     alu_outputs.val1 = Tagged_Capability {
@@ -1256,10 +1260,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 else begin
                     alu_outputs.control = CONTROL_TRAP;
                     alu_outputs.exc_code = check;
-                    
-                    alu_outputs.addr = cs;
-                    alu_outputs.val1 = ct;
-                    //alu_outputs.val2 = change_tagged_addr(tc_zero, zeroExtend(check));
                 end
             end
         end
@@ -1863,7 +1863,7 @@ function Exc_Code fv_checkValid_CCALLRET(Tagged_Capability cb, Tagged_Capability
     return out;
 endfunction
 
-function Bool fv_checkValid_SetOffset(Tagged_Capability cb, Bit#(64) newAddr);
+function Bool fv_checkValid_SetCursor(Tagged_Capability cb, Bit#(64) newAddr);
     Bit#(6)  exp = fv_getExp(cb);
     Bit#(64) upperMask = 64'hffff_ffff_ffff_ffff << (exp + 20);
     return ((cb.capability[63:0] & upperMask) == (newAddr & upperMask));
