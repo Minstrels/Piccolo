@@ -734,8 +734,7 @@ endfunction
 `ifdef CHERI
 typedef Bit #(5) Exc_Code;
 
-// Having a "Null" exception saves a tiny bit of space when we might otherwise have to return a
-// code AND a boolean. Not exactly an amazing design, but there's precedent elsewhere.
+// Having a "Null" exception saves a tiny bit of space when we might otherwise have to return a code AND a boolean. Not exactly an amazing design, but there's precedent elsewhere. Having it as code 16 is beneficial as we will only have one bit set in the error code.
 Exc_Code  exc_code_NO_EXCEPTION           = 16;
 // Unspecified capability exception
 Exc_Code  exc_code_CAPABILITY_EXC         = 17;
@@ -761,8 +760,10 @@ Exc_Code  exc_code_CRETURN                = 25;
 Exc_Code  exc_code_CCALL                  = 26;
 // Maximum Otype exceeded
 Exc_Code  exc_code_MAX_OTYPE              = 27;
+// Offset action breaking bounds
+Exc_Code  exc_code_OFFSET_REPRESENTATION  = 28;
 
-// Leaves codes 27-31 available.
+// Leaves codes 29-31 available.
 
 `else
 typedef Bit #(4) Exc_Code;
