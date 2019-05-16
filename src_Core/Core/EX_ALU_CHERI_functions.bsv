@@ -1521,15 +1521,13 @@ endfunction
 `ifdef SIMPLERANGE
 function Bit #(64) fv_getBase (Tagged_Capability tc);
     return zeroExtend(fv_getB(tc) << fv_getExp(tc));
-`else
+`else    
 function Bit #(65) fv_getBase (Tagged_Capability tc);
-    // As defined in 3.3.8/page 81.
     Bit #(6)  e = fv_getExp(tc);
     Bit #(20) b = fv_getB(tc);
-    Bit #(65) result = zeroExtend(pack(unpack(tc.capability[63:20+e]) + fv_baseCorrection(tc.capability[63:0],b,e)) << 20 + e);
-    Bit #(65) b_val = zeroExtend(b << e);
-    result = result + b_val;
-    return result;
+    Bit #(65) addrbits = {0, tc.capability[63:0]} & (65'h1_ffff_ffff_ffff_ffff << (20+e));
+    Bit #(65) middlebits = {0, pack(fv_baseCorrection(tc.capability[63:0],b,e)), b} << e;
+    return addrbits + middlebits;
 `endif
 endfunction
 
@@ -1538,16 +1536,12 @@ function Bit #(64) fv_getTop  (Tagged_Capability tc);
     return (extend(fv_getB(tc)+1) << fv_getExp(tc));
 `else
 function Bit #(65) fv_getTop  (Tagged_Capability tc);
-    // As defined in 3.3.8/page 81.
     Bit #(6)  e = fv_getExp(tc);
     Bit #(20) t = fv_getT(tc);
     Bit #(20) b = fv_getB(tc);
-    Bit #(65) result = 65'h0;
-    Bit #(65) addrbits = zeroExtend(tc.capability[63:0]) & (65'hffff_ffff_ffff_ffff << (20+e));
-    Bit #(65) upperbits = (addrbits + fv_topCorrection(tc.capability[63:0],b,t,e)) << (20 + e);
-    Bit #(65) lowerbits = zeroExtend(t << e);
-    
-    return upperbits+lowerbits;
+    Bit #(65) addrbits = {0, tc.capability[63:0]} & (65'h1_ffff_ffff_ffff_ffff << (20+e));
+    Bit #(65) middlebits = {0, pack(fv_topCorrection(tc.capability[63:0],b,t,e)), t} << e;
+    return addrbits + middlebits;
 `endif
 endfunction
 
