@@ -336,20 +336,21 @@ endfunction
 
 function ALU_Outputs fv_JAL (ALU_Inputs inputs);
    IntXL offset  = extend (unpack (inputs.decoded_instr.imm21_UJ));
-   Addr  next_pc = pack (unpack(cap_addr(inputs.pcc.capability)) + offset);
+   Addr  next_pc = pack (unpack(tagged_addr(inputs.pcc)) + offset);
    Addr  ret_pc  = cap_addr(inputs.pcc.capability) + 4;
 
    // nsharma: 2017-05-26 Bug fix
    // nsharma: next_pc[0] should be cleared for JAL/JALR
    // riscv-spec-v2.2. Secn 2.5. Page 16
    next_pc[0] = 1'b0;
-/*
+   
+   /*
+   `ifdef CHERI
    let alu_outputs = alu_outputs_base;
    
-   Tagged_Capability next = change_tagged_addr(inputs.pcc, next_pc);
-   alu_outputs.addr      = next;
+   alu_outputs.addr = change_tagged_addr(inputs.pcc, next_pc);
    
-   if (!fv_checkRange_withLen(next, 4'h4)) begin
+   if (!fv_checkRange_withLen_Other(inputs.pcc, next_pc, 4'h4)) begin
       alu_outputs.control = CONTROL_TRAP;
       alu_outputs.exc_code = exc_code_BOUNDS_VIOLATED;
    end
@@ -359,8 +360,9 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
       alu_outputs.op_stage2 = OP_Stage2_ALU;
       alu_outputs.rd        = inputs.decoded_instr.rd;
       alu_outputs.val1      = change_tagged_addr(inputs.pcc, ret_pc);
-   end*/
-   
+   end
+   `else
+   */
    
    let alu_outputs = alu_outputs_base;
    alu_outputs.control   = ((next_pc [1] == 1'b0) ? CONTROL_BRANCH : CONTROL_TRAP);
@@ -370,6 +372,7 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
    alu_outputs.addr      = change_tagged_addr(inputs.pcc, next_pc);
    alu_outputs.val1      = change_tagged_addr(inputs.pcc, ret_pc);
    
+   // `endif
    
    return alu_outputs;
 endfunction
@@ -393,23 +396,24 @@ function ALU_Outputs fv_JALR (ALU_Inputs inputs);
    
    let alu_outputs = alu_outputs_base;
    
-   /*Tagged_Capability next = change_tagged_addr(inputs.pcc, next_pc);
+   /*
+   `ifdef CHERI
+   let alu_outputs = alu_outputs_base;
+   alu_outputs.addr = change_tagged_addr(inputs.pcc, next_pc);
    
-   if (!fv_checkRange_withLen(next, 4'h04)) begin
+   if (!fv_checkRange_withLen_Other(inputs.pcc, next_pc, 4'h4)) begin
       alu_outputs.control = CONTROL_TRAP;
       alu_outputs.exc_code = exc_code_BOUNDS_VIOLATED;
    end
-   else if (next_pc[1] == 1'b1) begin
-      alu_outputs.control = CONTROL_TRAP;
-      alu_outputs.exc_code = exc_code_INSTR_ADDR_MISALIGNED;
-   end
    else begin
-      alu_outputs.addr      = next;
-      alu_outputs.control   = CONTROL_BRANCH;
+      alu_outputs.control   = ((next_pc [1] == 1'b0) ? CONTROL_BRANCH : CONTROL_TRAP);
+      alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
       alu_outputs.op_stage2 = OP_Stage2_ALU;
       alu_outputs.rd        = inputs.decoded_instr.rd;
       alu_outputs.val1      = change_tagged_addr(inputs.pcc, ret_pc);
-   end*/
+   end
+   `else
+   */
 
 
    alu_outputs.control   = ((next_pc [1] == 1'b0) ? CONTROL_BRANCH : CONTROL_TRAP);
@@ -419,6 +423,7 @@ function ALU_Outputs fv_JALR (ALU_Inputs inputs);
    alu_outputs.addr      = change_tagged_addr(inputs.pcc, next_pc);
    alu_outputs.val1      = change_tagged_addr(inputs.pcc, ret_pc);
 
+   // `endif
 
    return alu_outputs;
 endfunction
@@ -1559,8 +1564,8 @@ function Bit #(65) fv_getBase (Tagged_Capability tc);
     Bit #(6)  e = fv_getExp(tc);
     Bit #(20) b = fv_getB(tc);
     Bit #(65) addrbits   = {0, tc.capability[63:0]} & (65'h1_ffff_ffff_ffff_ffff << (20+e));
-    Bit #(65) upperbits  = addrbits + (pack(fv_baseCorrection(tc.capability[63:0],b,e)) << (20+e))
-    Bit #(65) lowerbits =  b << e;
+    Bit #(65) upperbits  = addrbits + (zeroExtend(pack(fv_baseCorrection(tc.capability[63:0],b,e))) << (20+e));
+    Bit #(65) lowerbits =  zeroExtend(b) << e;
     return upperbits+lowerbits;
 `endif
 endfunction
@@ -1691,6 +1696,12 @@ function Bool fv_checkRange_withLen (Tagged_Capability rs1, Bit#(4) bytes);
         out = False;
     return out;
 `endif
+endfunction
+
+function Bool fv_checkRange_withLen_Other (Tagged_Capability rs1, Addr address, Bit#(4) bytes);
+    Bit #(64) base   = fv_getBase(rs1)[63:0];
+    Bit #(64) top    = fv_getTop (rs1)[63:0];
+    return ((address + zeroExtend(bytes) - 1 <= top) || (address >= base));
 endfunction
 
 function Bool fv_check_CapCSR_Addr(CapCSR_Addr addr);
