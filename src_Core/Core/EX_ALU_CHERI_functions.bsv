@@ -1416,7 +1416,7 @@ function ALU_Outputs fv_CINSPECT_ETC (ALU_Inputs inputs);
         alu_outputs.val1 = change_tagged_addr(tc_zero, zeroExtend(inputs.rs1_val.tag));
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETSEALED) begin
-        Bit #(64) newVal = zeroExtend(pack(fv_checkSealed(inputs.rs1_val)));
+        Bit #(64) newVal = zeroExtend(rs1_cap[104]);
         alu_outputs.val1 = change_tagged_addr(tc_zero, newVal);
     end
     else if (inputs.decoded_instr.rs2 == f5_CGETOFFSET) begin
@@ -1565,9 +1565,9 @@ function Bit #(64) fv_getBase (Tagged_Capability tc);
 function Bit #(65) fv_getBase (Tagged_Capability tc);
     Bit #(6)  e = fv_getExp(tc);
     Bit #(20) b = fv_getB(tc);
-    Bit #(65) addrbits   = {1'b0, tc.capability[63:0]} & (65'h1_ffff_ffff_ffff_ffff << (20+e));
-    Bit #(65) upperbits  = (fv_baseCorrection(tc.capability[63:0],b,e) << (20+e));
-    Bit #(65) lowerbits  = (zeroExtend(b) << e);
+    Bit #(65) addrbits   = {1'b0, tc.capability[63:0]} & (65'h1_ffff_ffff_ffff_ffff << (20+{1'b0,e}));
+    Bit #(65) upperbits  = (fv_baseCorrection(tc.capability[63:0],b,e) << (20+{1'b0,e}));
+    Bit #(65) lowerbits  = (zeroExtend(b) << {1'b0,e});
     return addrbits + upperbits + lowerbits;
 `endif
 endfunction
@@ -1581,9 +1581,9 @@ function Bit #(65) fv_getTop  (Tagged_Capability tc);
     Bit #(20) t = fv_getT(tc);
     Bit #(20) b = fv_getB(tc);
     Bit #(65) result = 65'h0;
-    Bit #(65) addrbits  = {1'b0, tc.capability[63:0]} & (65'hffff_ffff_ffff_ffff << (20+e));
-    Bit #(65) upperbits = (fv_topCorrection(tc.capability[63:0],b,t,e) << (20 + e));
-    Bit #(65) lowerbits = (zeroExtend(t) << e);
+    Bit #(65) addrbits  = {1'b0, tc.capability[63:0]} & (65'hffff_ffff_ffff_ffff << (20+{1'b0,e}));
+    Bit #(65) upperbits = (fv_topCorrection(tc.capability[63:0],b,t,e) << (20 + {1'b0,e}));
+    Bit #(65) lowerbits = (zeroExtend(t) << {1'b0,e});
     return addrbits + upperbits + lowerbits;
 `endif
 endfunction
